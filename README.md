@@ -2,7 +2,7 @@
 
 Exact labelled subgraph matching on large graphs, and a harness that runs published exact matchers on the same inputs so all methods can be checked against each other and timed.
 
-**The problem.** You have a target graph whose nodes carry integer labels and a small, connected pattern graph with labelled nodes. The task is to find every occurrence of the pattern. An occurrence is a set of target nodes onto which the pattern maps one-to-one, with each node going to a node of the same label and each pattern edge to a target edge. Extra target edges are allowed, so this is a labelled monomorphism (non-induced subgraph matching). Each node set counts once.
+**The problem.** You have a target graph whose nodes carry labels and a small, connected pattern graph with labelled nodes. The task is to find every occurrence of the pattern. An occurrence is a set of target nodes onto which the pattern maps one-to-one, with each node going to a node of the same label and each pattern edge to a target edge. Extra target edges are allowed, so this is a labelled monomorphism (non-induced subgraph matching). Each node set counts once.
 
 ## Methods in this repository
 
@@ -40,7 +40,7 @@ Five published exact matchers, all run as monomorphism, each through a small bat
 
 Their code is not stored here. `benchmark/setup_tools.sh` fetches each tool at the commit listed in `benchmark/tools.lock`, unmodified, and compiles the drivers against it.
 
-**What a driver runs.** Per query, a driver calls the same functions, in the same order and with the same options, as the authors' own program in the last column does for one query. The tools' code is not changed. What the driver adds is only around those calls:
+**What a driver runs.** Per query, a driver calls the same functions, in the same order and with the same options, as the authors' own program in the last column does for one query. The tools' code is not changed, and apart from two guards in `daf_batch` for queries DAF's own program gets wrong (see Notes), what a driver adds is only around those calls:
 - it reads the target and all queries first;
 - it forks the requested number of workers, which take one query at a time from a shared counter, with a per-query time limit;
 - it keeps its result rows in memory and prints the wall time for all queries, from before the workers start until the last query finishes, so no file-system write is timed;
@@ -143,14 +143,14 @@ This runs every method on one machine so the times compare: the five tools, `hop
 
 - **What the tools output:** all five count mappings, as their own programs do. Our methods count node sets, so their times include deduplicating mappings into node sets and the tools' times do not.
 - **Where a driver differs from the authors' program.** These are the only differences:
-  - **DAF, pattern labels the target lacks:** the only change to what a tool computes. Such a query has no match. The authors' program crashes or reports matches that do not exist when a query label is larger than every label of the data graph, because its label table (`DataGraph::GetTransferredLabel`) is read past its end. So `daf_batch` answers such a query 0 without calling DAF; the comparison is inside the query's time. For a missing label below the largest, DAF's own check already rejects the query (`QueryGraph::LoadAndProcessGraph` returns false), and the driver records 0.
+  - **DAF, pattern labels the target lacks:** the only change to what a tool computes. Such a query has no match. The authors' program crashes or reports matches that do not exist when a query label is larger than every label of the data graph, because its label table (`DataGraph::GetTransferredLabel`) is read past its end. So `daf_batch` answers such a query 0 without calling DAF; the comparison is inside the query's time. For a missing label below the largest, DAF's own check catches it: `QueryGraph::LoadAndProcessGraph` returns false, and the driver records 0 (`main.cc` ignores that return value).
   - **DAF, crash when no match exists:** when the candidate space cannot be built, destroying DAF's partly built objects crashes (`free(): invalid pointer`). The driver records 0 and leaves them alone.
+  - These were found by running the authors' programs themselves on queries with a label the target lacks: DAF's crashed or reported 229 and 650 matches where none exist.
   - **Other tools and missing labels:** RI, VF3, VF3L and FASTiso get no such help. Run as the authors ship them, each already answers these queries correctly with 0.
   - **VF3 and VF3L:** each query's steps from `main.cpp` run once, as with `-r 0`; the program's repeat loop, which re-runs a query to average its time, is not used.
   - **Match output (verification runs only):** the matches come through each tool's own interface, as described above.
-- **Labels:** labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods. When most queries use a label the target lacks, as on some real graphs, the times mainly measure how fast each method rejects them.
-- **DAF's leaf counting:** DAF counts degree-1 query nodes combinatorially instead of enumerating them.
-- **Licences:** this repository is MIT. The published tools keep their own licences (`benchmark/tools.lock`): vf3lib is LGPL-3.0, DAF is Apache-2.0, RI has its own terms, and FASTiso's repository has no licence file. They are fetched from their authors, not redistributed.
+- **Labels:** labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods. When most queries use a label the target lacks, as on some real graphs, the times mainly measure how fast each method rejects them. For DAF that is the driver's guard rather than DAF itself, so on such targets DAF's time is not comparable with the others'.
+- **Licences:** this repository is MIT. The published tools keep their own licences (`benchmark/tools.lock`): RI is MIT, vf3lib is LGPL-3.0, DAF is Apache-2.0, and FASTiso's repository has no licence file. They are fetched from their authors, not redistributed.
 
 ## Layout
 
