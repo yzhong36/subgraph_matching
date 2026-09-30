@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The reference: plain whole-graph igraph VF2 per pattern, the target's labels against the pattern's, occurrences
 deduplicated by node set (the ground-truth definition).  Shares no matching code with seeded_exact.py or
-hop_filter.py (only common.py's pattern-list reading).  One pattern per worker (with --recorded, an earlier run's
+hop_filter.py (only common.py's input reading).  One pattern per worker (with --recorded, an earlier run's
 times order them slowest first); a pattern still running after --limit seconds is recorded as capped, with no count.
 
   vf2.py target.gml patterns.txt --workers 16 --limit 3600 --output vf2.jsonl   (lines: pattern, occurrences,
@@ -31,12 +31,6 @@ def _alarm(_signum, _frame):
     raise Capped()
 
 
-def read(path) -> ig.Graph:
-    g = ig.Graph.Read_GML(str(path))
-    g.vs['label'] = [int(v) for v in g.vs['label']]
-    return g
-
-
 def _one(j: int):
     P = _T['patterns'][j]
     signal.signal(signal.SIGALRM, _alarm)
@@ -60,9 +54,8 @@ def main() -> None:
     ap.add_argument('--recorded', type=Path, default=None, help='an earlier vf2.py output, to start the slowest patterns first')
     ap.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
-    G = read(args.target)
-    paths = common.pattern_paths(args.patterns)
-    _T.update(G=G, ids=[int(v) for v in G.vs['id']], patterns=[read(p) for p in paths], limit=args.limit)
+    G, paths, patterns = common.load(args.target, args.patterns)
+    _T.update(G=G, ids=[int(v) for v in G.vs['id']], patterns=patterns, limit=args.limit)
     order = list(range(len(paths)))
     if args.recorded and args.recorded.exists():
         took = {r['pattern']: r['seconds'] for r in map(json.loads, args.recorded.open())}

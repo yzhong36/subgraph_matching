@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Shared by the methods: GML input, and the candidate-filter kernels of hop_filter.py.
 
-  read_gml, pattern_paths   a simple undirected GML graph with an integer `label` per node; pattern lists
+  load                      the target and the patterns, their labels recoded as 0..L-1 over all of them
+  read_gml, pattern_paths   one simple undirected GML graph with a `label` per node; pattern lists
   csr, nbr_counts, pack     adjacency arrays, neighbour-label counts, and the patterns packed for numba
   _refine (_cover, _alive)  candidate refinement: drop a candidate v of pattern node u unless u's neighbours can take
                             distinct neighbours of v, each one of its own candidates (bipartite matching), and require
@@ -18,12 +19,37 @@ import numpy as np
 
 
 def read_gml(path) -> ig.Graph:
-    """A simple undirected GML graph with an integer `label` per node (and `x`, `y` for the target)."""
+    """A simple undirected GML graph with a `label` on every node, labels as GML gives them (numbers or strings)."""
     g = ig.Graph.Read_GML(str(path))
     if g.is_directed() or not g.is_simple():
-        raise ValueError(f'{path}: expected a simple undirected graph')
-    g.vs['label'] = [int(v) for v in g.vs['label']]
+        raise ValueError(f'{path}: expected a simple undirected graph (no direction, loops or repeated edges)')
+    if 'label' not in g.vs.attributes() or any(v is None or v != v or v == '' for v in g.vs['label']):
+        raise ValueError(f'{path}: every node needs a label')
     return g
+
+
+def label_key(v):
+    """A GML label as a key: GML numbers arrive as floats, so whole ones become ints; strings stay strings."""
+    return int(v) if isinstance(v, float) and v.is_integer() else v
+
+
+def load(target, patterns: list[str]) -> tuple[ig.Graph, list[Path], list[ig.Graph]]:
+    """The target, the pattern paths and the patterns, with every label recoded as 0..L-1 over all of them (the
+    target's labels first), so labels may be integers of any size or strings.  Labels match by value.  Patterns must
+    be connected."""
+    G = read_gml(target)
+    paths = pattern_paths(patterns)
+    Ps = [read_gml(p) for p in paths]
+    for p, P in zip(paths, Ps):
+        if not P.is_connected():
+            raise ValueError(f'{p}: pattern is not connected')
+    code: dict = {}
+    for g in (G, *Ps):
+        for v in g.vs['label']:
+            code.setdefault(label_key(v), len(code))
+    for g in (G, *Ps):
+        g.vs['label'] = [code[label_key(v)] for v in g.vs['label']]
+    return G, paths, Ps
 
 
 def pattern_paths(args: list[str]) -> list[Path]:

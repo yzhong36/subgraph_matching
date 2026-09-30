@@ -81,12 +81,7 @@ def main() -> None:
     args = ap.parse_args()
 
     t0 = time.perf_counter()
-    G = common.read_gml(args.target)
-    paths = common.pattern_paths(args.patterns)
-    patterns = [common.read_gml(p) for p in paths]
-    for p, P in zip(paths, patterns):
-        if not P.is_connected():
-            raise ValueError(f'{p}: pattern is not connected')
+    G, paths, patterns = common.load(args.target, args.patterns)
     info = {'method': 'seeded_exact', 'target': str(args.target), 'nodes': G.vcount(), 'edges': G.ecount(),
             'patterns': len(patterns), 'workers': args.workers, 'read_s': time.perf_counter() - t0}
     rows, timing = run_exact(G, patterns, args.workers, args.sets)

@@ -48,27 +48,63 @@ def test_hop_filter_equals_vf2():
     assert sets(d / 'hop.jsonl') == sets(d / 'vf2.jsonl')
 
 
+def relabelled(kind: str) -> Path:
+    """The example with its labels rewritten (strings, or large sparse integers) and three patterns added: single nodes
+    with a label the target has and with one it lacks, and a triangle using the lacking label; patterns as a folder."""
+    import igraph as ig
+    src, d = work(), work() / kind
+    if not d.exists():
+        (d / 'patterns').mkdir(parents=True)
+        new = (lambda l: f'type_{int(l)}') if kind == 'strings' else (lambda l: 1_000_003 * int(l) + 7)
+        for rel in ['target.gml'] + [f'patterns/{p.name}' for p in sorted((src / 'patterns').glob('*.gml'))]:
+            g = ig.Graph.Read_GML(str(src / rel))
+            g.vs['label'] = [new(l) for l in g.vs['label']]
+            g.write_gml(str(d / rel))
+        for name, labs, edges in (('single_present', [0], []), ('single_absent', [99], []),
+                                  ('triangle_absent', [0, 99, 0], [(0, 1), (1, 2), (0, 2)])):
+            g = ig.Graph(n=len(labs), edges=edges)
+            g.vs['id'], g.vs['label'] = list(range(len(labs))), [new(l) for l in labs]
+            g.write_gml(str(d / 'patterns' / f'{name}.gml'))
+        for m in ('seeded_exact.py', 'hop_filter.py', 'vf2.py'):
+            subprocess.run([PY, ROOT / 'methods' / m, d / 'target.gml', d / 'patterns', '--workers', '2',
+                            '--output', d / f'{m[:-3]}.jsonl'], check=True, stdout=subprocess.DEVNULL)
+    return d
+
+
+def test_labels_of_any_kind():
+    ref = {p: len(s) for p, s in sets(work() / 'vf2.jsonl').items()}
+    ref['single_present.gml'] = sum(1 for l in __import__('igraph').Graph.Read_GML(str(work() / 'target.gml')).vs['label']
+                                    if l == 0)
+    ref['single_absent.gml'] = ref['triangle_absent.gml'] = 0
+    for kind in ('strings', 'sparse'):
+        d = relabelled(kind)
+        for m in ('seeded_exact', 'hop_filter', 'vf2'):
+            got = {r['pattern']: r['occurrences'] for r in map(json.loads, (d / f'{m}.jsonl').open())}
+            assert got == ref, (kind, m)
+
+
 def test_published_tools():
+    """On the example, and on its string-labelled variant with single-node patterns (patterns as a folder)."""
     if not (BIN / 'ri_batch').exists():
         print(f'  published tools not built in {BIN}: skipped')
         return
-    d = work()
-    subprocess.run([PY, ROOT / 'benchmark' / 'convert.py', d / 'target.gml', d / 'patterns.txt', d / 'input'], check=True)
-    names = (d / 'input' / 'patterns.txt').read_text().split()
-    hop = {r['pattern']: r for r in map(json.loads, (d / 'hop.jsonl').open())}
-    ref = sets(d / 'vf2.jsonl')
-    for exe, fmt in (('ri_batch', 'gfu'), ('vf3_batch_VF3', 'vft'), ('vf3_batch_VF3L', 'vft'), ('daf_batch', 'daf'),
-                     ('fastiso_batch', 'gfu')):
-        out = d / f'{exe}.tsv'
-        subprocess.run([BIN / exe, d / 'input' / f'target.{fmt}', d / 'input' / f'queries_{fmt}.txt', '2', out, '60'],
-                       check=True, stdout=subprocess.DEVNULL)
-        rows = {int(r[0]): r[1:] for r in (l.split('\t') for l in out.read_text().splitlines() if l.strip())}
-        assert len(rows) == len(names), exe
-        for j, p in enumerate(names):
-            assert int(rows[j][1]) == hop[p]['mappings'], (exe, p)
-            if exe == 'ri_batch':
-                assert int(rows[j][2]) == len(ref[p]), (exe, p)
-
+    for d, plist, hop_out in ((work(), work() / 'patterns.txt', 'hop.jsonl'),
+                              (relabelled('strings'), relabelled('strings') / 'patterns', 'hop_filter.jsonl')):
+        subprocess.run([PY, ROOT / 'benchmark' / 'convert.py', d / 'target.gml', plist, d / 'input'], check=True,
+                       stdout=subprocess.DEVNULL)
+        names = (d / 'input' / 'patterns.txt').read_text().split()
+        hop = {r['pattern']: r for r in map(json.loads, (d / hop_out).open())}
+        for exe, fmt in (('ri_batch', 'gfu'), ('vf3_batch_VF3', 'vft'), ('vf3_batch_VF3L', 'vft'), ('daf_batch', 'daf'),
+                         ('fastiso_batch', 'gfu')):
+            out = d / f'{exe}.tsv'
+            subprocess.run([BIN / exe, d / 'input' / f'target.{fmt}', d / 'input' / f'queries_{fmt}.txt', '2', out, '60'],
+                           check=True, stdout=subprocess.DEVNULL)
+            rows = {int(r[0]): r[1:] for r in (l.split('\t') for l in out.read_text().splitlines() if l.strip())}
+            assert len(rows) == len(names), exe
+            for j, p in enumerate(names):
+                assert int(rows[j][1]) == hop[p]['mappings'], (d.name, exe, p)
+                if exe == 'ri_batch':
+                    assert int(rows[j][2]) == hop[p]['occurrences'], (d.name, exe, p)
 
 if __name__ == '__main__':
     failed = 0

@@ -16,7 +16,11 @@ All are exact, need no node coordinates, and are Python (numpy, python-igraph, n
 
 `methods/common.py` holds the GML reading and the candidate-filtering kernels they share.
 
-**Inputs.** GML files: the target has an integer `label` per node (other node attributes are ignored). Each pattern has an integer `label` per node, and patterns must be connected. A pattern list is a text file with one pattern GML path per line, relative to the list's own folder. A folder of `.gml` files also works.
+**Inputs.** GML files, the same for every method and for the published tools:
+- **Graphs:** the target and the patterns are simple undirected graphs (no direction, self-loops or repeated edges). Patterns must be connected; a single node is allowed.
+- **Labels:** every node has a `label`, either an integer of any size or a string. Labels match by value between the target and the patterns. Other node and edge attributes are ignored.
+- **Patterns:** given as `.gml` files, a folder of them, or a list file with one path per line, relative to the list's own folder.
+- **Rejected inputs:** anything else stops with an error saying what is wrong.
 
 **Output.** One JSON line per pattern, with `occurrences` and `seconds`, and with `--sets` the node sets as sorted target node ids. Each script also prints a one-line JSON summary of its timings.
 - `hop_filter.py` adds `mappings` (every assignment of pattern nodes, not only node sets) and `pairs` (windows enumerated).
@@ -124,7 +128,8 @@ This runs every method on one machine so the times compare: the five tools, `hop
 - **What the tools output:** RI's driver deduplicates mappings into node sets, as our methods do. VF3, VF3L, DAF and FASTiso only count mappings, so their times include no deduplication.
 - **Harness changes, all outside the tools' algorithms:**
   - DAF crashes when a query's candidate space cannot be built. That means no match exists, so its driver records 0.
-  - The `.vft` and `.daf` targets carry one isolated placeholder node for each label, up to the largest, that the target lacks. No pattern node can map onto one.
+  - VF3, VF3L and DAF: a query using a label the target lacks has no match, and is answered 0 without calling the tool. Otherwise the tool would index past its label tables. DAF then returned wrong counts; VF3's result was only correct by chance.
+  - Labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods.
   - VF3 and VF3L run each query's steps from the authors' `main.cpp` once, without its repeat loop.
 - **DAF's leaf counting:** DAF counts degree-1 query nodes combinatorially instead of enumerating them.
 - **Licences:** this repository is MIT. The published tools keep their own licences (`benchmark/tools.lock`): vf3lib is LGPL-3.0, DAF is Apache-2.0, RI has its own terms, and FASTiso's repository has no licence file. They are fetched from their authors, not redistributed.

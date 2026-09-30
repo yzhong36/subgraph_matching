@@ -2,6 +2,8 @@
 // target.  Monomorphism (-e), undirected (-u).  Target and every query read once, before the clock; W forked workers take
 // one query at a time from a shared counter.  Per query, inside the clock, what main.cpp does for one run (-r 0):
 // FastCheck, node classification of both graphs, VF3 node sorting, and FindAllMatchings.
+// Guard (not in main.cpp): a pattern using a label the target lacks has no match and is answered 0 without the search,
+// whose node classifier would give that label a class beyond the target's and index past its arrays.
 //   build: benchmark/setup_tools.sh (-DVF3 or -DVF3L)
 //   vf3_batch target.vft queries.txt workers out.tsv [limit_s]
 //   out.tsv: query index, seconds, solutions (mappings), timed out (0/1); stdout: wall seconds.
@@ -12,6 +14,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <string>
 #include <vector>
 #include <sys/mman.h>
@@ -37,6 +40,12 @@ int main(int argc, char** argv) {
     { std::ifstream f(argv[2]); std::string s;
       while (std::getline(f, s)) if (!s.empty()) { std::ifstream pin(s); pats.push_back(new ARGraph<data_t, Empty>(CreateLoader<data_t, Empty>(opt, pin))); } }
     int nq = pats.size();
+    std::set<data_t> tlabels;
+    for (nodeID_t i = 0; i < targ.NodeCount(); i++) tlabels.insert(targ.GetNodeAttr(i));
+    std::vector<char> possible(nq, 1);
+    for (int j = 0; j < nq; j++)
+        for (nodeID_t i = 0; i < pats[j]->NodeCount(); i++)
+            if (!tlabels.count(pats[j]->GetNodeAttr(i))) { possible[j] = 0; break; }
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
     auto t0 = std::chrono::steady_clock::now();
@@ -55,7 +64,7 @@ int main(int argc, char** argv) {
                     ARGraph<data_t, Empty>& patt = *pats[j];
                     me->ResetSolutionCounter();
                     FastCheck<data_t, data_t, Empty, Empty> check(&patt, &targ);
-                    if (check.CheckSubgraphIsomorphism()) {
+                    if (possible[j] && check.CheckSubgraphIsomorphism()) {
                         NodeClassifier<data_t, Empty> classifier(&targ);
                         NodeClassifier<data_t, Empty> classifier2(&patt, classifier);
                         std::vector<uint32_t> class_patt = classifier2.GetClasses();
