@@ -1,0 +1,6 @@
+# The published exact matchers of the benchmark: name, repository, the commit benchmarked (2026-09-29), licence.
+# setup_tools.sh fetches exactly these commits; nothing of their code is kept in this repository.
+RI       https://github.com/InfOmics/RI.git          350d4bbe2e7f750b250eece523d6f13ec7fb1d1f  see its LICENSE (Giugno et al.)
+vf3lib   https://github.com/MiviaLab/vf3lib.git      ce50d79ad19611af3197043fff36d52ca8a7a5bd  LGPL-3.0
+DAF      https://github.com/SNUCSE-CTA/DAF.git       a2bf15350b1f334d0bdd3ebdecef355449ad2059  Apache-2.0
+fastiso  https://gitlab.info.uqam.ca/cbe/fastiso.git 0b0b69959264dae220483ddba18d8f113e928c33  no licence file (authors' repository)
