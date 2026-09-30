@@ -10,7 +10,7 @@ All are exact, need no node coordinates, and are Python (numpy, python-igraph, n
 
 | Script | Method |
 | --- | --- |
-| `methods/hop_filter.py` | Hop windows. The target is split into cores of nearby nodes (a k-hop net). A pattern of radius r is searched within r hops of each core: cheap necessary tests first (label counts, neighbour-label counts, candidate refinement), then enumeration with LAD. Each occurrence is kept by exactly one core. |
+| `methods/hop_filter.py` | Hop windows. The target is split into cores of nearby nodes (a k-hop net). A pattern of radius r is searched within r hops of each core: cheap necessary tests first (label counts, neighbour-label counts, candidate refinement), then enumeration with LAD. Each occurrence is kept by exactly one core. `--core-hops` (default 4) sets the core spacing. |
 | `methods/seeded_exact.py` | Seeded exact. VF2 runs in the ball around each target node carrying the pattern's rarest label, with radius equal to that pattern node's eccentricity. |
 | `methods/vf2.py` | Plain whole-graph igraph VF2, deduplicated by node set. The reference. |
 
@@ -18,7 +18,9 @@ All are exact, need no node coordinates, and are Python (numpy, python-igraph, n
 
 **Inputs.** GML files: the target has an integer `label` per node (other node attributes are ignored). Each pattern has an integer `label` per node, and patterns must be connected. A pattern list is a text file with one pattern GML path per line, relative to the list's own folder. A folder of `.gml` files also works.
 
-**Output.** One JSON line per pattern (`occurrences`, `seconds`; with `--sets`, the node sets as sorted target node ids), plus a one-line JSON summary on stdout with the timings.
+**Output.** One JSON line per pattern, with `occurrences` and `seconds`, and with `--sets` the node sets as sorted target node ids. Each script also prints a one-line JSON summary of its timings.
+- `hop_filter.py` adds `mappings` (every assignment of pattern nodes, not only node sets) and `pairs` (windows enumerated).
+- `vf2.py` always writes the node sets. A query still running after `--limit` seconds is marked `capped` and has no count.
 
 ## Published matchers
 
@@ -112,6 +114,7 @@ This runs every method on one machine so the times compare: the five tools, `hop
 **What is timed:**
 - **The tools:** they prepare the target before their clock starts, so they are timed from the first query.
 - **`hop_filter.py` and seeded exact:** timed by their search alone. Hop windows' setup is shown separately in brackets.
+- **`vf2.py`:** its wall time. Queries stopped by `LIMIT` count at the limit, so that time is a lower bound (marked `*`).
 - **In every case:** reading the files and starting the workers are not counted.
 
 `python tests/test_methods.py` repeats the checks on the toy example: every method against VF2 node set by node set, and, if `build/bin` exists, every tool's counts. It also runs under `pytest`.

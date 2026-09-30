@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """The reference: plain whole-graph igraph VF2 per pattern, the target's labels against the pattern's, occurrences
 deduplicated by node set (the ground-truth definition).  Shares no matching code with seeded_exact.py or
-hop_filter.py.  One pattern per worker (with --recorded, an earlier run's times order them slowest first); a pattern
-still running after --limit seconds is recorded as capped, with no count.
+hop_filter.py (only common.py's pattern-list reading).  One pattern per worker (with --recorded, an earlier run's
+times order them slowest first); a pattern still running after --limit seconds is recorded as capped, with no count.
 
-  vf2.py <target.gml> <patterns.txt> --workers 16 --limit 3600 --output vf2.jsonl   (lines: pattern, occurrences,
+  vf2.py target.gml patterns.txt --workers 16 --limit 3600 --output vf2.jsonl   (lines: pattern, occurrences,
   seconds, capped, sets as sorted target node ids)"""
 from __future__ import annotations
 
 import argparse
 import json
 import multiprocessing as mp
+import os
 import signal
 import time
 from pathlib import Path
 
 import igraph as ig
+
+import common
 
 _T: dict = {}
 
@@ -51,18 +54,18 @@ def _one(j: int):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('target', type=Path)
-    ap.add_argument('patterns', type=Path, help='text file, one pattern GML path per line')
-    ap.add_argument('--workers', type=int, default=16)
+    ap.add_argument('patterns', nargs='+', help='pattern GMLs, directories of them, or text files listing them')
+    ap.add_argument('--workers', type=int, default=len(os.sched_getaffinity(0)))
     ap.add_argument('--limit', type=int, default=3600, help='seconds per pattern')
-    ap.add_argument('--recorded', type=Path, default=None, help='an earlier run\'s JSON with rows [pattern, seconds, ...], to start the slowest patterns first')
+    ap.add_argument('--recorded', type=Path, default=None, help='an earlier vf2.py output, to start the slowest patterns first')
     ap.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
     G = read(args.target)
-    paths = [args.patterns.parent / line.strip() for line in args.patterns.read_text().splitlines() if line.strip()]
+    paths = common.pattern_paths(args.patterns)
     _T.update(G=G, ids=[int(v) for v in G.vs['id']], patterns=[read(p) for p in paths], limit=args.limit)
     order = list(range(len(paths)))
     if args.recorded and args.recorded.exists():
-        took = {r[0]: r[1] for r in json.loads(args.recorded.read_text())['rows']}
+        took = {r['pattern']: r['seconds'] for r in map(json.loads, args.recorded.open())}
         order.sort(key=lambda j: -took.get(paths[j].name, 0.))
     rows = {}
     with mp.get_context('fork').Pool(args.workers) as pool:
