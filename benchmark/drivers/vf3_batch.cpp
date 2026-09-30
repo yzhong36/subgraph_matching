@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include "VFLib.h"
 #include "matches.h"
+#include "rows.h"
 #include "Options.hpp"
 using namespace vflib;
 
@@ -52,13 +53,20 @@ int main(int argc, char** argv) {
             if (!tlabels.count(pats[j]->GetNodeAttr(i))) { possible[j] = 0; break; }
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
-    auto t0 = std::chrono::steady_clock::now();
+    // every worker's output files are opened before the clock starts, so file-system latency is not timed
+    std::vector<FILE*> fos(workers), fms(workers, nullptr);
+    for (int w = 0; w < workers; w++) {
+        fos[w] = fopen((out + "." + std::to_string(w)).c_str(), "w");
+        if (!matches.empty()) fms[w] = fopen(matches_part(matches, w).c_str(), "w");
+    }
+    auto t0 = Clock::now();
     for (int w = 0; w < workers; w++) {
         if (fork() == 0) {
-            FILE* fo = fopen((out + "." + std::to_string(w)).c_str(), "w");
-            FILE* fm = matches.empty() ? nullptr : fopen(matches_part(matches, w).c_str(), "w");
+            FILE* fo = fos[w];
+            FILE* fm = fms[w];
             signal(SIGALRM, on_alarm);
             MatchingEngine<state_t>* me = CreateMatchingEngine(opt);
+            std::string rows;
             for (;;) {
                 int j = next->fetch_add(1);
                 if (j >= nq) break;
@@ -92,22 +100,18 @@ int main(int argc, char** argv) {
                     timed_out = 1; sols = me->GetSolutionsCount();                      // the state leaks
                 }
                 double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - s0).count();
-                fprintf(fo, "%d\t%.6f\t%zu\t%d\n", j, sec, sols, timed_out);
-                fflush(fo);
+                { char b[192]; snprintf(b, sizeof b, "%d\t%.6f\t%zu\t%d\n", j, sec, sols, timed_out); rows += b; }
             }
-            fclose(fo);
+            finish_worker(fo, rows, t0);
             if (fm) fclose(fm);
             _exit(0);
         }
     }
     while (wait(nullptr) > 0) {}
-    double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-    std::ofstream fo(out);
-    for (int w = 0; w < workers; w++) {
-        std::ifstream f(out + "." + std::to_string(w)); std::string s;
-        while (std::getline(f, s)) fo << s << "\n";
-        std::remove((out + "." + std::to_string(w)).c_str());
-    }
+    double wall = std::chrono::duration<double>(Clock::now() - t0).count();
+    for (FILE* f : fos) fclose(f);
+    for (FILE* f : fms) if (f) fclose(f);
+    wall = merge_rows(out, workers, wall);
     if (!matches.empty()) merge_matches(matches, workers);
     std::cout << wall << "\n";
     return 0;

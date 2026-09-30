@@ -43,7 +43,7 @@ A mapping is one assignment of pattern nodes to target nodes. A node set with se
 Their code is not stored here. `benchmark/setup_tools.sh` fetches each tool at the commit listed in `benchmark/tools.lock` and builds the drivers. Each driver:
 - reads the target and all queries first;
 - forks the requested number of workers, which take one query at a time from a shared counter;
-- prints the wall time for all queries;
+- keeps its result rows in memory and prints the wall time for all queries: from before the workers start until the last query finishes, so no file-system write is timed;
 - writes one TSV row per query: query index, seconds, mappings, then (`ri_batch` only) distinct node sets, then timed out (0/1).
 
 Optionally a driver also writes the matches, for verification: give it a sixth argument (after the time limit) naming an output file. It then writes one line per distinct matched node set of each query: the query index, then the set's target node indices, sorted. Every driver except `daf_batch` does this. DAF counts the matches of degree-1 pattern nodes combinatorially instead of enumerating them, so it can only be checked by its counts. Without the argument the drivers run exactly as before, so timings are unaffected.
@@ -124,7 +124,7 @@ This runs every method on one machine so the times compare: the five tools, `hop
 - **Checking that all methods find the same matches:** run it with `SETS=1`. Our methods then write their node sets, and RI, VF3, VF3L and FASTiso write theirs, and `summarize.py` compares them node set by node set with VF2 (or with `hop_filter.py` where VF2 hit its limit). DAF is checked by its counts. These runs write large files and are slower, so use a separate run for timings.
 
 **What is timed:**
-- **The tools:** they prepare the target before their clock starts, so they are timed from the first query.
+- **The tools:** they prepare the target and open their output files before the clock starts, so they are timed from the first query to the last.
 - **`hop_filter.py` and seeded exact:** timed by their search alone. Hop windows' setup is shown separately in brackets.
 - **`vf2.py`:** its wall time. Queries stopped by `LIMIT` count at the limit, so that time is a lower bound (marked `*`).
 - **In every case:** reading the files and starting the workers are not counted.
