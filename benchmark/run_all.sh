@@ -7,7 +7,8 @@
 #
 # patterns: a folder of pattern .gml files, a list file (one pattern GML path per line, relative to the list's folder),
 # or one .gml file.  Pattern file names must be unique (results are keyed by them).
-# Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2.
+# Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2, WHICH (all, tools = only the five published
+# tools, ours = only hop_filter, seeded_exact and VF2).
 # SETS=1: verification run, for benchmark/summarize.py's check that every method finds the same node sets.  Our
 # methods write their node sets and the tools (except DAF, which only counts) dump theirs, so times are not comparable.
 # Results in out_dir: input/ (converted files), w<W>_<method>.{tsv,wall} for the tools, w<W>_<method>.{jsonl,json} for
@@ -31,16 +32,20 @@ tool() {   # tool <label> <key> <driver> <format> <dumps matches 1|0>
     [ "${SETS:-0}" = 1 ] && [ "$5" = 1 ] && extra=("$R/w${W}_$2.matches")
     "$BIN/$3" "$I/target.$4" "$I/queries_$4.txt" "$W" "$R/w${W}_$2.tsv" "$LIMIT" ${extra[@]+"${extra[@]}"} > "$R/w${W}_$2.wall"
 }
-tool RI      ri      ri_batch       gfu 1
-tool VF3     vf3     vf3_batch_VF3  vft 1
-tool VF3L    vf3l    vf3_batch_VF3L vft 1
-tool DAF     daf     daf_batch      daf 0
-tool FASTiso fastiso fastiso_batch  gfu 1
+if [ "${WHICH:-all}" != ours ]; then
+    tool RI      ri      ri_batch       gfu 1
+    tool VF3     vf3     vf3_batch_VF3  vft 1
+    tool VF3L    vf3l    vf3_batch_VF3L vft 1
+    tool DAF     daf     daf_batch      daf 0
+    tool FASTiso fastiso fastiso_batch  gfu 1
+fi
 
 SETARG=(); [ "${SETS:-0}" = 1 ] && SETARG=(--sets)
-step hop;     "$PY" "$M/hop_filter.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_hop.jsonl" > "$R/w${W}_hop.json"
-step seeded;  "$PY" "$M/seeded_exact.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
-if [ "${VF2:-0}" = 1 ]; then
-    step VF2; "$PY" "$M/vf2.py" "$G" "$P" --workers "$W" --limit "$LIMIT" --output "$R/w${W}_vf2.jsonl" > "$R/w${W}_vf2.json"
+if [ "${WHICH:-all}" != tools ]; then
+    step hop;     "$PY" "$M/hop_filter.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_hop.jsonl" > "$R/w${W}_hop.json"
+    step seeded;  "$PY" "$M/seeded_exact.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
+    if [ "${VF2:-0}" = 1 ]; then
+        step VF2; "$PY" "$M/vf2.py" "$G" "$P" --workers "$W" --limit "$LIMIT" --output "$R/w${W}_vf2.jsonl" > "$R/w${W}_vf2.json"
+    fi
 fi
 echo "$(date +%T) done"

@@ -56,6 +56,7 @@ using namespace fastiso::internal;
 #include <fstream>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include "labels.h"
 #include "matches.h"
 #include "rows.h"
 
@@ -101,6 +102,7 @@ int main(int argc, char** argv) {
     for (auto& q : qpaths) { Graph* g = new Graph(0); auto* pf = new Parser::ParseGFUFile(*g, true, false); Parser::Parser::parse(*pf, q); delete pf; pats.push_back(g); }
     const CompareEmptyEdgeAttr* cmp = new const CompareEmptyEdgeAttr();
     int nq = pats.size();
+    LabelGuard guard(argv[1], qpaths, "gfu");
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
     // every worker's output files are opened before the clock starts, so file-system latency is not timed
@@ -124,7 +126,7 @@ int main(int argc, char** argv) {
                 auto s0 = std::chrono::steady_clock::now();
                 std::vector<std::vector<State::Monomorphism::node_id_nt>> found;
                 if (sigsetjmp(jb, 1) == 0) {
-                    alarm(limit_s); count = run_query(*pats[j], target, *cmp, fm ? &found : nullptr); alarm(0);
+                    alarm(limit_s); count = guard.possible(j) ? run_query(*pats[j], target, *cmp, fm ? &found : nullptr) : 0; alarm(0);
                     if (fm) { NodeSets ns; for (auto& m : found) ns.add(m.begin(), m.end()); ns.write(fm, j); }
                 } else timed_out = 1;
                 double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - s0).count();

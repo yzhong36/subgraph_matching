@@ -32,6 +32,7 @@
 #include "Match.h"
 #include "Solver.h"
 #include "SubGISolver.h"
+#include "labels.h"
 #include "matches.h"
 #include "rows.h"
 
@@ -71,6 +72,7 @@ int main(int argc, char* argv[]) {
     std::vector<Graph*> queries;
     for (auto& p : qpaths) { Graph* q = new Graph(); if (read_graph(p.c_str(), q, GFT_GFU) != 0) { std::cerr << "bad " << p << "\n"; return 1; } queries.push_back(q); }
     int nq = queries.size();
+    LabelGuard guard(argv[1], qpaths, "gfu");
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
     std::string out = argv[4];
@@ -96,10 +98,13 @@ int main(int argc, char* argv[]) {
                 SetListener* L = new SetListener();
                 if (sigsetjmp(jb, 1) == 0) {
                     alarm(limit);
-                    MaMaConstrFirst* mama = new MaMaConstrFirst(*queries[j]);
-                    mama->build(*queries[j]);
-                    long st, tc, mc;
-                    match(*target, *queries[j], *mama, *L, MT_MONO, nodeCmp, edgeCmp, &st, &tc, &mc);
+                    MaMaConstrFirst* mama = nullptr;
+                    if (guard.possible(j)) {
+                        mama = new MaMaConstrFirst(*queries[j]);
+                        mama->build(*queries[j]);
+                        long st, tc, mc;
+                        match(*target, *queries[j], *mama, *L, MT_MONO, nodeCmp, edgeCmp, &st, &tc, &mc);
+                    }
                     alarm(0);
                     mappings = L->matchcount; sets = L->sets.size();
                     if (fm) for (const auto& s : L->sets) write_node_set(fm, j, s);

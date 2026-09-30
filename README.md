@@ -120,7 +120,7 @@ Results are keyed by pattern file name, so the names must be unique.
 
 This runs every method on one machine so the times compare: the five tools, `hop_filter.py`, `seeded_exact.py`, and `vf2.py` if `VF2=1`.
 - **Queries:** every query, with a per-query time limit (`LIMIT`, default 300 s).
-- **Other settings:** `BIN` sets where the drivers are, and `PYTHON` which interpreter runs our methods.
+- **Other settings:** `BIN` sets where the drivers are, and `PYTHON` which interpreter runs our methods. `WHICH=tools` runs only the five published tools, and `WHICH=ours` only our methods and VF2.
 - **Checking that all methods find the same matches:** run it with `SETS=1`. Our methods then write their node sets, and RI, VF3, VF3L and FASTiso write theirs, and `summarize.py` compares them node set by node set with VF2 (or with `hop_filter.py` where VF2 hit its limit). DAF is checked by its counts. These runs write large files and are slower, so use a separate run for timings.
 
 **What is timed:**
@@ -136,7 +136,7 @@ This runs every method on one machine so the times compare: the five tools, `hop
 - **What the tools output:** RI's driver deduplicates mappings into node sets, as our methods do. VF3, VF3L, DAF and FASTiso only count mappings, so their times include no deduplication.
 - **Harness changes, all outside the tools' algorithms:**
   - DAF crashes when a query's candidate space cannot be built. That means no match exists, so its driver records 0.
-  - VF3, VF3L and DAF: a query using a label the target lacks has no match, and is answered 0 without calling the tool. Otherwise the tool would index past its label tables. DAF then returned wrong counts; VF3's result was only correct by chance.
+  - **Absent labels:** a query using a label the target lacks has no match, so every driver answers it 0 without calling its tool (`benchmark/drivers/labels.h`). DAF and VF3 need this: DAF reads past its label table for such a label and returned wrong counts, and VF3's classifier would index past the target's classes. RI and FASTiso get the same check so all five tools are treated alike. The check is a few set lookups per query and is inside the query's time; our methods do the equivalent themselves. When most queries have an absent label, as with one of the benchmark targets (353 of 358), the times mainly measure how fast each method rejects them.
   - Labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods.
   - VF3 and VF3L run each query's steps from the authors' `main.cpp` once, without its repeat loop.
 - **DAF's leaf counting:** DAF counts degree-1 query nodes combinatorially instead of enumerating them.

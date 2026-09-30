@@ -5,7 +5,7 @@
 // Guard (not in main.cc): when the query or its candidate space cannot be built (no embedding exists), the count is 0
 // and the partly built objects are left alone, since destroying them crashes (free(): invalid pointer).  Likewise a
 // query using a label the data graph lacks is answered 0 without DAF, whose label lookup (DataGraph::GetTransferredLabel)
-// reads past its table for a label above the data graph's largest.
+// reads past its table for a label above the data graph's largest (labels.h; the lookups are inside the query's time).
 //   daf_batch data.daf queries.txt workers out.tsv [limit_s]
 //   (no match output: DAF counts the matches of degree-1 query nodes combinatorially instead of enumerating them)
 //   out.tsv: query index, seconds, matches, timed out (0/1); stdout: wall seconds.
@@ -17,26 +17,18 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <set>
-#include <sstream>
 #include <string>
 #include <vector>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "labels.h"
 #include "rows.h"
 #include "include/backtrack.h"
 #include "include/candidate_space.h"
 #include "include/dag.h"
 #include "include/data_graph.h"
 #include "include/query_graph.h"
-
-static std::vector<long> labels_of(const std::string& path) {      // the labels of a .daf file's "v id label" lines
-    std::vector<long> out; std::ifstream f(path); std::string line;
-    while (std::getline(f, line))
-        if (line.size() > 1 && line[0] == 'v') { std::istringstream ss(line.substr(1)); long id, l; ss >> id >> l; out.push_back(l); }
-    return out;
-}
 
 static sigjmp_buf jb;
 static void on_alarm(int) { siglongjmp(jb, 1); }
@@ -53,11 +45,7 @@ int main(int argc, char** argv) {
     { std::ifstream f(argv[2]); std::string s;
       while (std::getline(f, s)) if (!s.empty()) { queries.push_back(new daf::QueryGraph(s)); qpaths.push_back(s); } }
     int nq = queries.size();
-    std::set<long> dlabels;
-    for (long l : labels_of(argv[1])) dlabels.insert(l);
-    std::vector<char> possible(nq, 1);
-    for (int j = 0; j < nq; j++)
-        for (long l : labels_of(qpaths[j])) if (!dlabels.count(l)) { possible[j] = 0; break; }
+    LabelGuard guard(argv[1], qpaths, "daf");
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
     // every worker's output files are opened before the clock starts, so file-system latency is not timed
@@ -80,7 +68,7 @@ int main(int argc, char** argv) {
                 if (sigsetjmp(jb, 1) == 0) {
                     alarm(limit_s);
                     daf::QueryGraph& query = *queries[j];
-                    if (possible[j] && query.LoadAndProcessGraph(data)) {
+                    if (guard.possible(j) && query.LoadAndProcessGraph(data)) {
                         auto* dag = new daf::DAG(data, query);
                         dag->BuildDAG();
                         auto* cs = new daf::CandidateSpace(data, query, *dag);
