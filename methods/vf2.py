@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The reference: plain whole-graph igraph VF2 per pattern, the target's labels against the pattern's, occurrences
-deduplicated by node set (the ground-truth definition).  Shares no matching code with exact_match.py or
+deduplicated by node set (the ground-truth definition).  Shares no matching code with seeded_exact.py or
 hop_filter.py.  One pattern per worker (with --recorded, an earlier run's times order them slowest first); a pattern
 still running after --limit seconds is recorded as capped, with no count.
 

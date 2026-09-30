@@ -6,16 +6,17 @@ Exact labelled subgraph matching on large graphs, and a harness that runs publis
 
 ## Methods in this repository
 
-All are Python (numpy, python-igraph, numba) and run in parallel over worker processes (`--workers`).
+All are exact, need no node coordinates, and are Python (numpy, python-igraph, numba) running in parallel over worker processes (`--workers`).
 
-| Script | Method | Exact? | Needs coordinates? |
-| --- | --- | --- | --- |
-| `methods/hop_filter.py` | Hop windows. The target is split into cores of nearby nodes (a k-hop net). A pattern of radius r is searched within r hops of each core: cheap necessary tests first (label counts, neighbour-label counts, candidate refinement), then enumeration with LAD. Each occurrence is kept by exactly one core. | yes | no |
-| `methods/exact_match.py exact` | Seeded exact. VF2 runs in the ball around each target node carrying the pattern's rarest label, with radius equal to that pattern node's eccentricity. | yes | no |
-| `methods/exact_match.py filter` | Spatial windows: the same tests and enumeration as hop windows, on square tiles of the plane. | misses an occurrence that sticks out of its tile (possible only through a long edge) | yes (`x`, `y`) |
-| `methods/vf2.py` | Plain whole-graph igraph VF2, deduplicated by node set. The reference. | yes | no |
+| Script | Method |
+| --- | --- |
+| `methods/hop_filter.py` | Hop windows. The target is split into cores of nearby nodes (a k-hop net). A pattern of radius r is searched within r hops of each core: cheap necessary tests first (label counts, neighbour-label counts, candidate refinement), then enumeration with LAD. Each occurrence is kept by exactly one core. |
+| `methods/seeded_exact.py` | Seeded exact. VF2 runs in the ball around each target node carrying the pattern's rarest label, with radius equal to that pattern node's eccentricity. |
+| `methods/vf2.py` | Plain whole-graph igraph VF2, deduplicated by node set. The reference. |
 
-**Inputs.** GML files: the target has an integer `label` per node, plus `x`, `y` for the spatial filter. Each pattern has an integer `label` per node, and patterns must be connected. A pattern list is a text file with one pattern GML path per line, relative to the list's own folder. A folder of `.gml` files also works.
+`methods/common.py` holds the GML reading and the candidate-filtering kernels they share.
+
+**Inputs.** GML files: the target has an integer `label` per node (other node attributes are ignored). Each pattern has an integer `label` per node, and patterns must be connected. A pattern list is a text file with one pattern GML path per line, relative to the list's own folder. A folder of `.gml` files also works.
 
 **Output.** One JSON line per pattern (`occurrences`, `seconds`; with `--sets`, the node sets as sorted target node ids), plus a one-line JSON summary on stdout with the timings.
 
@@ -55,7 +56,7 @@ BOOST_INCLUDE=/path/to/boost/include benchmark/setup_tools.sh       # the publis
 ## Example: a toy pattern search
 
 `examples/make_example.py` builds a toy target and patterns:
-- **Target:** 1,600 nodes on a jittered triangular lattice, with 5 labels from common to rare and `x`, `y` coordinates.
+- **Target:** 1,600 nodes on a jittered triangular lattice, with 5 labels from common to rare.
 - **Patterns:** 40 connected patterns of 3–8 nodes grown from the target, so each occurs at least once. Every eighth has its labels shuffled, so it may not occur.
 
 ```bash
@@ -65,9 +66,8 @@ python examples/make_example.py work/
 **Our methods:**
 
 ```bash
-python methods/hop_filter.py   work/target.gml work/patterns.txt --workers 4 --output work/hop.jsonl
-python methods/exact_match.py exact  work/target.gml work/patterns.txt --workers 4 --output work/seeded.jsonl
-python methods/exact_match.py filter work/target.gml work/patterns.txt --workers 4 --output work/filter.jsonl --sets
+python methods/hop_filter.py   work/target.gml work/patterns.txt --workers 4 --output work/hop.jsonl --sets
+python methods/seeded_exact.py work/target.gml work/patterns.txt --workers 4 --output work/seeded.jsonl
 python methods/vf2.py          work/target.gml work/patterns.txt --workers 4 --output work/vf2.jsonl
 ```
 
@@ -92,9 +92,9 @@ python benchmark/summarize.py results/example
 ```
 == example
   4 workers, reference VF2: 26,580 occurrences
-    exact: VF2 finished 40/40; hop 40/40; seeded 40/40; filter 40/40 (short 0); RI mappings 40/40, node sets 40/40;
-           VF3 mappings 40/40; VF3L mappings 40/40; DAF mappings 40/40; FASTiso mappings 40/40
-    wall s: RI 0.02, VF3 0.02, VF3L 0.01, DAF 0.01, FASTiso 0.01, hop 0.23 (+0.00), filter 0.43, seeded exact 0.15, VF2 0.24
+    exact: VF2 finished 40/40; hop 40/40; seeded 40/40; RI mappings 40/40, node sets 40/40; VF3 mappings 40/40;
+           VF3L mappings 40/40; DAF mappings 40/40; FASTiso mappings 40/40
+    wall s: RI 0.02, VF3 0.01, VF3L 0.01, DAF 0.01, FASTiso 0.01, hop 0.28 (+0.04), seeded exact 0.12, VF2 0.21
 ```
 
 **How to read it.** Every method returned exactly VF2's occurrences for all 40 patterns, and every tool's mapping count equals hop windows' count. `python benchmark/tables.py results/*` turns several runs into a markdown table of wall times. The toy example is too small for the times to mean anything; run it on your own graphs for that.
@@ -102,18 +102,16 @@ python benchmark/summarize.py results/example
 ## Comparing the methods on your own graph
 
 ```bash
-benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers> [core]
+benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers>
 ```
 
-This runs every method on one machine so the times compare: the five tools, `hop_filter.py`, both `exact_match.py` methods, and `vf2.py` if `VF2=1`.
+This runs every method on one machine so the times compare: the five tools, `hop_filter.py`, `seeded_exact.py`, and `vf2.py` if `VF2=1`.
 - **Queries:** every query, with a per-query time limit (`LIMIT`, default 300 s).
-- **Spatial filter's tile size:** `core` sets it in coordinate units; without it the filter calibrates its own. The filter is skipped when the target has no coordinates.
 - **Other settings:** `BIN` sets where the drivers are, and `PYTHON` which interpreter runs our methods.
 
 **What is timed:**
 - **The tools:** they prepare the target before their clock starts, so they are timed from the first query.
 - **`hop_filter.py` and seeded exact:** timed by their search alone. Hop windows' setup is shown separately in brackets.
-- **The spatial filter:** its setup and search together.
 - **In every case:** reading the files and starting the workers are not counted.
 
 `python tests/test_methods.py` repeats the checks on the toy example: every method against VF2 node set by node set, and, if `build/bin` exists, every tool's counts. It also runs under `pytest`.
@@ -131,7 +129,7 @@ This runs every method on one machine so the times compare: the five tools, `hop
 ## Layout
 
 ```
-methods/            hop_filter.py, exact_match.py, vf2.py
+methods/            hop_filter.py, seeded_exact.py, vf2.py, common.py
 benchmark/          setup_tools.sh, tools.lock, drivers/*.cpp, convert.py, run_all.sh, summarize.py, tables.py
 examples/           make_example.py
 tests/              test_methods.py

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Every method against plain whole-graph VF2 on the synthetic example (examples/make_example.py), node set by node set:
-seeded exact and hop_filter must equal VF2; exact_match filter must report nothing VF2 does not (it may miss an
-occurrence that sticks out of its window).  If the published tools are built (build/bin, or BIN), each tool's mapping
+seeded exact and hop_filter must equal VF2.  If the published tools are built (build/bin, or BIN), each tool's mapping
 count must equal hop_filter's and RI's distinct node sets must equal VF2's.
 
   python tests/test_methods.py            (or pytest tests/)
@@ -28,8 +27,7 @@ def work() -> Path:
         subprocess.run([PY, ROOT / 'examples' / 'make_example.py', d], check=True)
         t, p = d / 'target.gml', d / 'patterns.txt'
         subprocess.run([PY, ROOT / 'methods' / 'vf2.py', t, p, '--workers', '2', '--output', d / 'vf2.jsonl'], check=True)
-        for name, args in (('seeded', ['exact_match.py', 'exact']), ('filter', ['exact_match.py', 'filter']),
-                           ('hop', ['hop_filter.py'])):
+        for name, args in (('seeded', ['seeded_exact.py']), ('hop', ['hop_filter.py'])):
             subprocess.run([PY, ROOT / 'methods' / args[0], *args[1:], t, p, '--workers', '2', '--sets',
                             '--output', d / f'{name}.jsonl'], check=True)
         _WORK['dir'] = d
@@ -48,12 +46,6 @@ def test_seeded_exact_equals_vf2():
 def test_hop_filter_equals_vf2():
     d = work()
     assert sets(d / 'hop.jsonl') == sets(d / 'vf2.jsonl')
-
-
-def test_spatial_filter_reports_nothing_false():
-    d = work()
-    ref, got = sets(d / 'vf2.jsonl'), sets(d / 'filter.jsonl')
-    assert all(got[p] <= ref[p] for p in ref)
 
 
 def test_published_tools():

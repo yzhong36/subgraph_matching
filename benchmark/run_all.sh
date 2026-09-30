@@ -1,11 +1,11 @@
 #!/bin/bash
 # Every method on one target, one worker count, on this machine (so the times compare): the published exact matchers
-# (RI, VF3, VF3L, DAF, FASTiso; built by setup_tools.sh) and ours (hop_filter, exact_match filter, exact_match exact),
+# (RI, VF3, VF3L, DAF, FASTiso; built by setup_tools.sh) and ours (hop_filter.py, seeded_exact.py),
 # optionally plain whole-graph VF2 (VF2=1).  Every query; LIMIT seconds per query (default 300).
 #
-#   benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers> [core]
+#   benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers>
 #
-# core: exact_match.py filter's core side, in the target's coordinate units; without it the filter calibrates its own.  Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2.
+# Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2.
 # Results in out_dir: input/ (converted files), w<W>_<method>.{tsv,wall} for the tools, w<W>_<method>.{jsonl,json} for
 # ours, w<W>_host.txt.  benchmark/summarize.py reads them.
 set -euo pipefail
@@ -14,7 +14,7 @@ M=$HERE/../methods
 BIN=${BIN:-$HERE/../build/bin}
 PY=${PYTHON:-python3}
 LIMIT=${LIMIT:-300}
-G=$1; P=$2; R=$3; W=$4; CORE=${5:-}
+G=$1; P=$2; R=$3; W=$4
 mkdir -p "$R"
 I=$R/input
 [ -f "$I/queries_daf.txt" ] || "$PY" "$HERE/convert.py" "$G" "$P" "$I"
@@ -28,9 +28,7 @@ step DAF;     "$BIN/daf_batch"      "$I/target.daf" "$I/queries_daf.txt" "$W" "$
 step FASTiso; "$BIN/fastiso_batch"  "$I/target.gfu" "$I/queries_gfu.txt" "$W" "$R/w${W}_fastiso.tsv" "$LIMIT" > "$R/w${W}_fastiso.wall"
 
 step hop;     "$PY" "$M/hop_filter.py" "$G" "$P" --workers "$W" --output "$R/w${W}_hop.jsonl" > "$R/w${W}_hop.json"
-step filter;  "$PY" "$M/exact_match.py" filter "$G" "$P" --workers "$W" ${CORE:+--core "$CORE"} \
-                  --output "$R/w${W}_filter.jsonl" > "$R/w${W}_filter.json" || echo "filter skipped (needs x, y per node)"
-step seeded;  "$PY" "$M/exact_match.py" exact "$G" "$P" --workers "$W" --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
+step seeded;  "$PY" "$M/seeded_exact.py" "$G" "$P" --workers "$W" --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
 if [ "${VF2:-0}" = 1 ]; then
     step VF2; "$PY" "$M/vf2.py" "$G" "$P" --workers "$W" --limit "$LIMIT" --output "$R/w${W}_vf2.jsonl" > "$R/w${W}_vf2.json"
 fi

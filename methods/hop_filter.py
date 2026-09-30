@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Refined filter + exact enumeration on hop-distance windows: exact, and no coordinates.  The graph-distance
-version of exact_match.py `filter`, whose kernels it reuses; the matching definition is the same.
+"""Candidate filtering + exact enumeration on hop-distance windows: every occurrence of each pattern in a labelled
+target graph, with no coordinates needed.  The matching definition is that of seeded_exact.py and vf2.py.
 
   cores       a k-hop net of seed nodes (taken in node order, each more than k hops from every earlier seed), and
               every node assigned to its nearest seed (graph Voronoi, ties to the earlier seed)
@@ -10,7 +10,7 @@ version of exact_match.py `filter`, whose kernels it reuses; the matching defini
               sends a central pattern node to.  Every node of S lies within r hops of o(S), since an embedding never
               lengthens a path.  So the owner's window holds all of S, and LAD finds every mapping onto S there.
               Every other window that holds S computes the same o(S), so each occurrence is counted exactly once.
-  filter      exact_match's per (pattern, window): label counts, one-hop candidates, refinement; then, on the
+  filter      per (pattern, window): label counts, one-hop candidates, refinement (common.py); then, on the
               graph, a connected group of candidates covering every pattern node and holding a core node that is a
               candidate for a central pattern node (o(S) is one)
 
@@ -30,7 +30,7 @@ import igraph as ig
 import numba as nb
 import numpy as np
 
-import exact_match as E
+import common
 
 _H: dict = {}          # set before the workers fork
 
@@ -138,7 +138,9 @@ def _holds_core(C, tptr, tidx, incore, central):
 
 @nb.njit(cache=True)
 def _passing(tl, tptr, tidx, tnbr, tcnt, lord, loff, incore, qoff, qlab, qnbr, qptr_all, qidx_all, qcnt, qcentral):
-    """exact_match._passing with the core test on the graph (_holds_core) instead of the plane."""
+    """Which patterns can have an occurrence owned by this window: label counts; one-hop candidates C[u, v] (v has
+    u's label and at least u's count of neighbours of every label); refinement; a candidate group holding a core
+    node that is a candidate for a central pattern node (_holds_core)."""
     nq, nl = qcnt.shape
     n = tl.shape[0]
     deg, ml = 0, 0
@@ -179,7 +181,7 @@ def _passing(tl, tptr, tidx, tnbr, tcnt, lord, loff, incore, qoff, qlab, qnbr, q
             continue
         qptr = qptr_all[o:o + m + 1] - qptr_all[o]
         qidx = qidx_all[qptr_all[o]:qptr_all[o + m]] - o
-        if (E._refine(C, qptr, qidx, tptr, tidx, ql, qcnt[q], buf)
+        if (common._refine(C, qptr, qidx, tptr, tidx, ql, qcnt[q], buf)
                 and _holds_core(C, tptr, tidx, incore, qcentral[o:o + m])):
             out[q] = True
     return out
@@ -301,7 +303,7 @@ def run_hop(G: ig.Graph, patterns: list, workers: int, sets: bool, k: int) -> tu
     labels = np.asarray(G.vs['label'], np.int64)
     nl = int(max(labels.max(), max(max(P.vs['label']) for P in patterns))) + 1
     edges = np.fromiter(itertools.chain.from_iterable(G.get_edgelist()), np.int64, count=2 * G.ecount()).reshape(-1, 2)
-    ptr, idx = E.csr(G.vcount(), edges)
+    ptr, idx = common.csr(G.vcount(), edges)
     core = make_cores(ptr, idx, k)
     ncores = int(core.max()) + 1
     order = np.argsort(core, kind='stable')
@@ -312,7 +314,7 @@ def run_hop(G: ig.Graph, patterns: list, workers: int, sets: bool, k: int) -> tu
     levels = []
     for r in sorted(set(radius)):
         js = [j for j in range(len(patterns)) if radius[j] == r]
-        packed = E.pack([patterns[j] for j in js], nl)
+        packed = common.pack([patterns[j] for j in js], nl)
         qcentral = np.concatenate([ecc[j] == radius[j] for j in js])
         levels.append((r, js, (*packed, qcentral)))
     tasks = [int(c) for c in np.argsort(-np.diff(cptr), kind='stable')]            # the largest cores first
@@ -353,12 +355,12 @@ def main() -> None:
     ap.add_argument('--workers', type=int, default=len(os.sched_getaffinity(0)))
     ap.add_argument('--core-hops', type=int, default=4, help='seed spacing of the cores, in hops (about 34 nodes per core on a Delaunay graph)')
     ap.add_argument('--sets', action='store_true', help='also write each occurrence as its sorted target node ids')
-    ap.add_argument('--output', type=Path, default=None, help='JSON lines, one per pattern (as exact_match.py)')
+    ap.add_argument('--output', type=Path, default=None, help='JSON lines, one per pattern: occurrences, mappings, pairs, seconds, and sets with --sets')
     args = ap.parse_args()
     t0 = time.perf_counter()
-    G = E.read_gml(args.target)
-    paths = E.pattern_paths(args.patterns)
-    patterns = [E.read_gml(p) for p in paths]
+    G = common.read_gml(args.target)
+    paths = common.pattern_paths(args.patterns)
+    patterns = [common.read_gml(p) for p in paths]
     for p, P in zip(paths, patterns):
         if not P.is_connected():
             raise ValueError(f'{p}: pattern is not connected')

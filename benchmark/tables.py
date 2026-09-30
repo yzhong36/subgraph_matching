@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Markdown wall-time tables (one per worker count) from run_all.sh result directories, fastest per target in bold,
 '*' where some queries hit the per-query limit (a lower bound).  hop_filter and seeded exact are their search time,
-exact_match filter setup + search, the tools and VF2 their wall.
+the tools and VF2 their wall.
 
   tables.py results/small results/large ... [--names "Small" "Large" ...]
 """
@@ -12,9 +12,9 @@ import json
 from pathlib import Path
 
 ROWS = [('vf3', 'VF3'), ('vf3l', 'VF3L'), ('fastiso', 'FASTiso'), ('daf', 'DAF'), ('ri', 'RI 3.6'),
-        ('hop', 'hop_filter (ours)'), ('filter', 'exact_match filter (ours)'), ('seeded', 'exact_match exact (ours)'),
+        ('hop', 'hop_filter (ours)'), ('seeded', 'seeded_exact (ours)'),
         ('vf2', 'plain VF2')]
-FIELD = {'hop': 'search_s', 'filter': 'total_s', 'seeded': 'search_s', 'vf2': 'wall_s'}
+FIELD = {'hop': 'search_s', 'seeded': 'search_s', 'vf2': 'wall_s'}
 
 
 def value(d: Path, w: int, key: str):

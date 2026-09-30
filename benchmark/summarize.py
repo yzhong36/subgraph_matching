@@ -3,13 +3,11 @@
 
 Exactness, per pattern:
   reference   plain VF2's node sets where it ran and finished, else hop_filter's (itself checked against VF2)
-  ours        node-set counts of seeded exact and hop_filter against the reference; exact_match filter's shortfall
-              (occurrences that stick out of their owner window)
+  ours        node-set counts of seeded exact and hop_filter against the reference
   tools       RI's distinct node sets against the reference; every tool's mapping count against hop_filter's (hop counts
               every mapping onto each node set it owns)
 Time: wall for every query of the target.  The tools read and prepare the target before their clock; so are
-hop_filter and seeded exact shown as their search (hop's setup in brackets), exact_match filter as setup + search, VF2
-as its wall.  '*': some queries hit the per-query limit and count at the limit, so the wall is a lower bound.
+hop_filter and seeded exact shown as their search (hop's setup in brackets), VF2 as its wall.  '*': some queries hit the per-query limit and count at the limit, so the wall is a lower bound.
 
   summarize.py <out_dir> [<out_dir> ...]
 """
@@ -41,7 +39,7 @@ def tsv(p: Path):
 def report(R: Path, W: int) -> list[str]:
     names = (R / 'input' / 'patterns.txt').read_text().split()
     n = len(names)
-    hop, vf2, seeded, filt = (jl(R / f'w{W}_{m}.jsonl') for m in ('hop', 'vf2', 'seeded', 'filter'))
+    hop, vf2, seeded = (jl(R / f'w{W}_{m}.jsonl') for m in ('hop', 'vf2', 'seeded'))
     if hop is None:
         return [f'  {W} workers: no hop_filter run']
     ref = {p: hop[p]['occurrences'] for p in names}
@@ -58,8 +56,6 @@ def report(R: Path, W: int) -> list[str]:
         checks.insert(0, f'VF2 finished {sum(not r["capped"] for r in vf2.values())}/{n}')
     if seeded:
         checks.append(f'seeded {same(seeded)}/{n}')
-    if filt:
-        checks.append(f'filter {same(filt)}/{n} (short {sum(ref[p] - filt[p]["occurrences"] for p in names):,})')
     hmaps = [hop[p]['mappings'] for p in names]
     for key, name in TOOLS:
         t = tsv(R / f'w{W}_{key}.tsv')
@@ -81,7 +77,7 @@ def report(R: Path, W: int) -> list[str]:
             times.append(f'{name} {float(w.read_text()):.2f}{star}')
     h = js(R / f'w{W}_hop.json')
     times.append(f"hop {h['search_s']:.2f} (+{h['prepare_s']:.2f})")
-    for key, name, field in (('filter', 'filter', 'total_s'), ('seeded', 'seeded exact', 'search_s')):
+    for key, name, field in (('seeded', 'seeded exact', 'search_s'),):
         d = js(R / f'w{W}_{key}.json')
         if d:
             times.append(f'{name} {d[field]:.2f}')
