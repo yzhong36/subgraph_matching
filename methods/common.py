@@ -39,6 +39,10 @@ def load(target, patterns: list[str]) -> tuple[ig.Graph, list[Path], list[ig.Gra
     be connected."""
     G = read_gml(target)
     paths = pattern_paths(patterns)
+    names = [p.name for p in paths]
+    if len(set(names)) < len(names):
+        dup = sorted({n for n in names if names.count(n) > 1})
+        raise ValueError(f'pattern file names must be unique (results are keyed by them): {dup[:5]}')
     Ps = [read_gml(p) for p in paths]
     for p, P in zip(paths, Ps):
         if not P.is_connected():

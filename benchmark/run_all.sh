@@ -3,8 +3,10 @@
 # (RI, VF3, VF3L, DAF, FASTiso; built by setup_tools.sh) and ours (hop_filter.py, seeded_exact.py),
 # optionally plain whole-graph VF2 (VF2=1).  Every query; LIMIT seconds per query (default 300).
 #
-#   benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers>
+#   benchmark/run_all.sh <target.gml> <patterns> <out_dir> <workers>
 #
+# patterns: a folder of pattern .gml files, a list file (one pattern GML path per line, relative to the list's folder),
+# or one .gml file.  Pattern file names must be unique (results are keyed by them).
 # Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2.
 # Results in out_dir: input/ (converted files), w<W>_<method>.{tsv,wall} for the tools, w<W>_<method>.{jsonl,json} for
 # ours, w<W>_host.txt.  benchmark/summarize.py reads them.

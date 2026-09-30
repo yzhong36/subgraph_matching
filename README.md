@@ -108,8 +108,15 @@ python benchmark/summarize.py results/example
 ## Comparing the methods on your own graph
 
 ```bash
-benchmark/run_all.sh <target.gml> <patterns.txt> <out_dir> <workers>
+benchmark/run_all.sh <target.gml> <patterns> <out_dir> <workers>
 ```
+
+`<patterns>` is a single argument in one of three forms:
+- a folder, meaning every `*.gml` directly inside it, in file-name order;
+- a list file (any file not ending in `.gml`, e.g. `patterns.txt`) with one pattern GML path per line, relative to the list's own folder;
+- one `.gml` file.
+
+Results are keyed by pattern file name, so the names must be unique.
 
 This runs every method on one machine so the times compare: the five tools, `hop_filter.py`, `seeded_exact.py`, and `vf2.py` if `VF2=1`.
 - **Queries:** every query, with a per-query time limit (`LIMIT`, default 300 s).
