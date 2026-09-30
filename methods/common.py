@@ -69,7 +69,6 @@ def pattern_paths(args: list[str]) -> list[Path]:
     return out
 
 
-
 # --------------------------------------------------------------------------- adjacency and patterns
 
 def csr(n: int, edges: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -94,7 +93,6 @@ def pack(patterns: list, nl: int) -> tuple:
     ptr, idx = csr(len(lab), edges)
     cnt = np.stack([np.bincount(lab[a:b], minlength=nl) for a, b in zip(off[:-1], off[1:])]).astype(np.int64)
     return off, lab, nbr_counts(lab, ptr, idx, nl), ptr, idx, cnt
-
 
 
 # --------------------------------------------------------------------------- candidate refinement

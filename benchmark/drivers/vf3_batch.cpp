@@ -2,9 +2,6 @@
 // target.  Monomorphism (-e), undirected (-u).  Target and every query read once, before the clock; W forked workers take
 // one query at a time from a shared counter.  Per query, inside the clock, what main.cpp does for one run (-r 0):
 // FastCheck, node classification of both graphs, VF3 node sorting, and FindAllMatchings.
-// Guard (not in main.cpp): a pattern using a label the target lacks has no match and is answered 0 without the search,
-// whose node classifier would give that label a class beyond the target's and index past its arrays (labels.h; the
-// lookups are inside the query's time).
 //   build: benchmark/setup_tools.sh (-DVF3 or -DVF3L)
 //   vf3_batch target.vft queries.txt workers out.tsv [limit_s [matches_out]]
 //   matches_out (verification runs, not for timing): also write every query's distinct matched node sets (matches.h)
@@ -23,7 +20,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "VFLib.h"
-#include "labels.h"
 #include "matches.h"
 #include "rows.h"
 #include "Options.hpp"
@@ -44,11 +40,9 @@ int main(int argc, char** argv) {
     ARGLoader<data_t, Empty>* tl = CreateLoader<data_t, Empty>(opt, tin);
     ARGraph<data_t, Empty> targ(tl);
     std::vector<ARGraph<data_t, Empty>*> pats;
-    std::vector<std::string> qpaths;
     { std::ifstream f(argv[2]); std::string s;
-      while (std::getline(f, s)) if (!s.empty()) { qpaths.push_back(s); std::ifstream pin(s); pats.push_back(new ARGraph<data_t, Empty>(CreateLoader<data_t, Empty>(opt, pin))); } }
+      while (std::getline(f, s)) if (!s.empty()) { std::ifstream pin(s); pats.push_back(new ARGraph<data_t, Empty>(CreateLoader<data_t, Empty>(opt, pin))); } }
     int nq = pats.size();
-    LabelGuard guard(argv[1], qpaths, "vft");
     std::atomic<int>* next = (std::atomic<int>*)mmap(nullptr, sizeof(std::atomic<int>), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     new (next) std::atomic<int>(0);
     // every worker's output files are opened before the clock starts, so file-system latency is not timed
@@ -75,7 +69,7 @@ int main(int argc, char** argv) {
                     ARGraph<data_t, Empty>& patt = *pats[j];
                     me->ResetSolutionCounter();
                     FastCheck<data_t, data_t, Empty, Empty> check(&patt, &targ);
-                    if (guard.possible(j) && check.CheckSubgraphIsomorphism()) {
+                    if (check.CheckSubgraphIsomorphism()) {
                         NodeClassifier<data_t, Empty> classifier(&targ);
                         NodeClassifier<data_t, Empty> classifier2(&patt, classifier);
                         std::vector<uint32_t> class_patt = classifier2.GetClasses();

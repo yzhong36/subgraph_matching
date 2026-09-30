@@ -25,25 +25,24 @@ import numpy as np
 
 import common
 
-PIN = 1 << 20          # a label no node uses: pins the anchor
 _W: dict = {}          # set before the workers fork, so they share it: target and patterns
 
 
-def seeded(G: ig.Graph, labels: np.ndarray, P: ig.Graph) -> set:
-    """Every occurrence of P in G, as sorted tuples of G's vertex indices."""
+def seeded(G: ig.Graph, labels: np.ndarray, P: ig.Graph, pin: int) -> set:
+    """Every occurrence of P in G, as sorted tuples of G's vertex indices.  pin: a label no node uses."""
     pl = P.vs['label']
     counts = np.bincount(labels, minlength=max(pl) + 1)
     anchor = min(range(P.vcount()), key=lambda u: (counts[pl[u]], u))
     radius = int(P.eccentricity(anchor))
     colour2 = list(pl)
-    colour2[anchor] = PIN
+    colour2[anchor] = pin
     found = set()
     for node in np.flatnonzero(labels == pl[anchor]).tolist():
         ball = sorted(G.neighborhood(node, order=radius))      # induced_subgraph numbers vertices in id order
         if len(ball) < P.vcount():
             continue
         colour1 = labels[ball].tolist()
-        colour1[ball.index(node)] = PIN
+        colour1[ball.index(node)] = pin
         sub = G.induced_subgraph(ball, implementation='create_from_scratch')
         for m in sub.get_subisomorphisms_vf2(P, color1=colour1, color2=colour2):
             found.add(tuple(sorted(ball[i] for i in m)))
@@ -52,14 +51,16 @@ def seeded(G: ig.Graph, labels: np.ndarray, P: ig.Graph) -> set:
 
 def _exact_worker(j: int):
     start = time.perf_counter()
-    found = seeded(_W['G'], _W['labels'], _W['patterns'][j])
+    found = seeded(_W['G'], _W['labels'], _W['patterns'][j], _W['pin'])
     return j, time.perf_counter() - start, list(found) if _W['sets'] else len(found)
 
 
 def run_exact(G: ig.Graph, patterns: list, workers: int, sets: bool) -> tuple[list, dict]:
     t0 = time.perf_counter()
     bare = ig.Graph(n=G.vcount(), edges=G.get_edgelist())       # induced_subgraph would copy every GML attribute
-    _W.update(G=bare, labels=np.asarray(G.vs['label'], np.int64), patterns=patterns, sets=sets)
+    labels = np.asarray(G.vs['label'], np.int64)
+    pin = int(max(labels.max(), max(max(P.vs['label']) for P in patterns))) + 1   # labels are 0..L-1 (common.load)
+    _W.update(G=bare, labels=labels, patterns=patterns, sets=sets, pin=pin)
     prepare = time.perf_counter() - t0
     with mp.get_context('fork').Pool(workers) as pool:
         t1 = time.perf_counter()
@@ -69,10 +70,9 @@ def run_exact(G: ig.Graph, patterns: list, workers: int, sets: bool) -> tuple[li
              for _j, s, f in rows], {'prepare_s': prepare, 'search_s': search})
 
 
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('target', type=Path, help='target GML: integer `label` per node')
+    ap.add_argument('target', type=Path, help='target GML: a `label` per node (integer or string)')
     ap.add_argument('patterns', nargs='+', help='pattern GMLs, directories of them, or text files listing them')
     ap.add_argument('--workers', type=int, default=len(os.sched_getaffinity(0)))
     ap.add_argument('--sets', action='store_true', help='also write each occurrence as its sorted target node ids')

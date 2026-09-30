@@ -350,7 +350,7 @@ def run_hop(G: ig.Graph, patterns: list, workers: int, sets: bool, k: int) -> tu
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('target', type=Path, help='target GML: integer `label` per node (no coordinates needed)')
+    ap.add_argument('target', type=Path, help='target GML: a `label` per node, integer or string (no coordinates needed)')
     ap.add_argument('patterns', nargs='+', help='pattern GMLs, directories of them, or text files listing them')
     ap.add_argument('--workers', type=int, default=len(os.sched_getaffinity(0)))
     ap.add_argument('--core-hops', type=int, default=4, help='seed spacing of the cores, in hops (about 34 nodes per core on a Delaunay graph)')

@@ -2,9 +2,9 @@
 """Summarise run_all.sh outputs: exactness and wall time, per result directory and worker count.
 
 Exactness, per pattern:
-  reference   plain VF2's node sets where it ran and finished, else hop_filter's (itself checked against VF2)
-  counts      node-set counts of seeded exact and hop_filter against the reference; RI's distinct node sets against it;
-              every tool's mapping count against hop_filter's (hop counts every mapping onto each node set it owns)
+  reference   plain VF2's node sets where it ran and finished, else hop_filter's (itself checked against VF2 elsewhere)
+  counts      node-set counts of seeded exact and hop_filter against the reference; every tool's mapping count
+              against hop_filter's (hop counts every mapping onto each node set it owns)
   node sets   with SETS=1 runs: every method that wrote its matches (ours with --sets, RI, VF3, VF3L, FASTiso through their
               drivers' match output) is compared node set by node set with the reference: patterns with identical sets,
               sets it found that the reference lacks (false) and sets it lacks (missed).  DAF only counts (its authors' code
@@ -74,11 +74,10 @@ def node_set_check(R: Path, W: int, names: list[str], rows: dict) -> list[str]:
         missed = sum(len(ref[p] - got.get(p, set())) for p in only)
         out.append(f'{label} {same}/{len(only)}' + ('' if not (false or missed) else f' (false {false}, missed {missed})'))
 
-    for key, label in (('hop', 'hop'), ('seeded', 'seeded'), ('vf2', 'VF2')):
+    for key, label in (('hop', 'hop'), ('seeded', 'seeded')):
         r = rows[key]
         if r and all('sets' in r[p] for p in names):
-            compare(label, {p: sets_of(r, p) for p in names},
-                    [p for p in names if not r[p].get('capped')] if key == 'vf2' else None)
+            compare(label, {p: sets_of(r, p) for p in names})
     for key, label in TOOLS:
         m = R / f'w{W}_{key}.matches'
         if m.exists() and ids is not None:
@@ -114,8 +113,6 @@ def report(R: Path, W: int) -> list[str]:
             checks.append(f'{name} missing' if t is None else f'{name} returned {len(t)}/{n}')
             continue
         c = f'{name} mappings {sum(int(t[j][1]) == hmaps[j] for j in range(n))}/{n}'
-        if key == 'ri':
-            c += f', node sets {sum(int(t[j][2]) == ref[names[j]] for j in range(n))}/{n}'
         to = sum(int(t[j][-1]) for j in range(n))
         checks.append(c + (f', {to} timed out' if to else ''))
     lines.append('    exact: ' + '; '.join(checks))

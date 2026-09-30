@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every method against plain whole-graph VF2 on the synthetic example (examples/make_example.py), node set by node set:
 seeded exact and hop_filter must equal VF2.  If the published tools are built (build/bin, or BIN), each tool's mapping
-count must equal hop_filter's and RI's distinct node sets must equal VF2's.
+count must equal hop_filter's, and the node sets RI, VF3, VF3L and FASTiso write must equal VF2's.
 
   python tests/test_methods.py            (or pytest tests/)
 """
@@ -107,14 +107,13 @@ def test_published_tools():
             assert len(rows) == len(names), exe
             for j, p in enumerate(names):
                 assert int(rows[j][1]) == hop[p]['mappings'], (d.name, exe, p)
-                if exe == 'ri_batch':
-                    assert int(rows[j][2]) == hop[p]['occurrences'], (d.name, exe, p)
             if dumps:
                 found = {p: set() for p in names}
                 for line in matches.read_text().splitlines():
                     f = line.split()
                     found[names[int(f[0])]].add(tuple(sorted(ids[int(x)] for x in f[1:])))
                 assert found == vf2, (d.name, exe, 'node sets differ from VF2')
+
 
 if __name__ == '__main__':
     failed = 0

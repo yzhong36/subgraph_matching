@@ -30,23 +30,25 @@ All are exact, need no node coordinates, and are Python (numpy, python-igraph, n
 
 Five published exact matchers, all run as monomorphism, each through a small batch driver in `benchmark/drivers/`:
 
-| Driver (`build/bin/`) | Method | Code | Input | Reports per query |
+| Driver (`build/bin/`) | Method | Code | Input | Follows the authors' |
 | --- | --- | --- | --- | --- |
-| `ri_batch` | RI 3.6 (Bonnici et al., BMC Bioinformatics 2013) | [InfOmics/RI](https://github.com/InfOmics/RI) | `.gfu` | mappings and distinct node sets |
-| `vf3_batch_VF3` | VF3 (Carletti et al., TPAMI 2018) | [MiviaLab/vf3lib](https://github.com/MiviaLab/vf3lib) | `.vft` | mappings |
-| `vf3_batch_VF3L` | VF3L, VF3 without look-ahead (Carletti et al., 2019) | [MiviaLab/vf3lib](https://github.com/MiviaLab/vf3lib) | `.vft` | mappings |
-| `daf_batch` | DAF (Han et al., SIGMOD 2019) | [SNUCSE-CTA/DAF](https://github.com/SNUCSE-CTA/DAF) | `.daf` | mappings |
-| `fastiso_batch` | FASTiso (Coti, Reinharz & Agbeto, bioRxiv 2025) | [cbe/fastiso](https://gitlab.info.uqam.ca/cbe/fastiso) | `.gfu` | mappings |
+| `ri_batch` | RI 3.6 (Bonnici et al., BMC Bioinformatics 2013) | [InfOmics/RI](https://github.com/InfOmics/RI) | `.gfu` | `ri3.cpp` (`mono gfu`) |
+| `vf3_batch_VF3` | VF3 (Carletti et al., TPAMI 2018) | [MiviaLab/vf3lib](https://github.com/MiviaLab/vf3lib) | `.vft` | `main.cpp` (`-u -e -r 0`) |
+| `vf3_batch_VF3L` | VF3L, VF3 without look-ahead (Carletti et al., 2019) | [MiviaLab/vf3lib](https://github.com/MiviaLab/vf3lib) | `.vft` | `main.cpp` (`-u -e -r 0`) |
+| `daf_batch` | DAF (Han et al., SIGMOD 2019) | [SNUCSE-CTA/DAF](https://github.com/SNUCSE-CTA/DAF) | `.daf` | `main/main.cc` |
+| `fastiso_batch` | FASTiso (Coti, Reinharz & Agbeto, bioRxiv 2025) | [cbe/fastiso](https://gitlab.info.uqam.ca/cbe/fastiso) | `.gfu` | `fast_iso.cpp` (`-A monomorphism -F gfu -G -S count-solution`) |
 
-A mapping is one assignment of pattern nodes to target nodes. A node set with several valid assignments (from pattern symmetries) has several mappings; our methods and RI count node sets.
+Their code is not stored here. `benchmark/setup_tools.sh` fetches each tool at the commit listed in `benchmark/tools.lock`, unmodified, and compiles the drivers against it.
 
-Their code is not stored here. `benchmark/setup_tools.sh` fetches each tool at the commit listed in `benchmark/tools.lock` and builds the drivers. Each driver:
-- reads the target and all queries first;
-- forks the requested number of workers, which take one query at a time from a shared counter;
-- keeps its result rows in memory and prints the wall time for all queries: from before the workers start until the last query finishes, so no file-system write is timed;
-- writes one TSV row per query: query index, seconds, mappings, then (`ri_batch` only) distinct node sets, then timed out (0/1).
+**What a driver runs.** Per query, a driver calls the same functions, in the same order and with the same options, as the authors' own program in the last column does for one query. The tools' code is not changed. What the driver adds is only around those calls:
+- it reads the target and all queries first;
+- it forks the requested number of workers, which take one query at a time from a shared counter, with a per-query time limit;
+- it keeps its result rows in memory and prints the wall time for all queries, from before the workers start until the last query finishes, so no file-system write is timed;
+- it writes one TSV row per query: query index, seconds, mappings, timed out (0/1).
 
-Optionally a driver also writes the matches, for verification: give it a sixth argument (after the time limit) naming an output file. It then writes one line per distinct matched node set of each query: the query index, then the set's target node indices, sorted. Every driver except `daf_batch` does this. DAF counts the matches of degree-1 pattern nodes combinatorially instead of enumerating them, so it can only be checked by its counts. Without the argument the drivers run exactly as before, so timings are unaffected.
+A mapping is one assignment of pattern nodes to target nodes, which is what every tool counts. A node set with several valid assignments (from pattern symmetries) has several mappings. Our methods count node sets, and `hop_filter.py` also reports mappings so the two can be compared.
+
+**Match output, for verification.** A sixth argument (after the time limit) names a file for the matches. The driver then writes one line per distinct matched node set of each query: the query index, then the set's target node indices, sorted. It gets the matches through each tool's own interface: a match listener for RI (in place of `ri3.cpp`'s printing one), vf3lib's stored solutions, and FASTiso's solution list (`-S print-solution`). Every driver except `daf_batch` does this. DAF counts the matches of degree-1 pattern nodes combinatorially instead of enumerating them, so it can only be checked by its counts. Without the argument no matches are kept, so timings are unaffected.
 
 Only matchers with public code and no cap on query size are included. GraphQL, CFL, DP-iso, CECI, VEQ, RapidMatch, ASDMatch, GuP and EGSM all have a fixed maximum query size.
 
@@ -88,22 +90,28 @@ build/bin/daf_batch      work/input/target.daf work/input/queries_daf.txt 4 work
 build/bin/fastiso_batch  work/input/target.gfu work/input/queries_gfu.txt 4 work/fastiso.tsv 300
 ```
 
-**All of them at once, then checked against each other:**
+**All of them at once, then checked against each other** (`SETS=1` makes every method that can write its matches do so):
 
 ```bash
-VF2=1 benchmark/run_all.sh work/target.gml work/patterns.txt results/example 4
+VF2=1 SETS=1 benchmark/run_all.sh work/target.gml work/patterns.txt results/example 4
 python benchmark/summarize.py results/example
 ```
 
+Output of that run:
+
 ```
 == example
+  host: x1000c7s1b0n0, AMD EPYC 7742 64-Core Processor, 4 workers, 2026-09-30T00:28:29-04:00
   4 workers, reference VF2: 26,580 occurrences
-    exact: VF2 finished 40/40; hop 40/40; seeded 40/40; RI mappings 40/40, node sets 40/40; VF3 mappings 40/40;
-           VF3L mappings 40/40; DAF mappings 40/40; FASTiso mappings 40/40
-    wall s: RI 0.02, VF3 0.01, VF3L 0.01, DAF 0.01, FASTiso 0.01, hop 0.28 (+0.04), seeded exact 0.12, VF2 0.21
+    exact: VF2 finished 40/40; hop 40/40; seeded 40/40; RI mappings 40/40; VF3 mappings 40/40; VF3L mappings 40/40; DAF mappings 40/40; FASTiso mappings 40/40
+    node sets vs VF2, patterns identical: hop 40/40; seeded 40/40; RI 40/40; VF3 40/40; VF3L 40/40; FASTiso 40/40
+    wall s: RI 0.03, VF3 0.04, VF3L 0.05, DAF 0.01, FASTiso 0.08, hop 0.28 (+0.06), seeded exact 0.15, VF2 0.24
 ```
 
-**How to read it.** Every method returned exactly VF2's occurrences for all 40 patterns, and every tool's mapping count equals hop windows' count. `python benchmark/tables.py results/*` turns several runs into a markdown table of wall times. The toy example is too small for the times to mean anything; run it on your own graphs for that.
+**How to read it:**
+- **`exact`:** for how many of the 40 patterns each method's count agrees. Our methods' node-set counts are compared with VF2's, and every tool's mapping count with `hop_filter.py`'s.
+- **`node sets vs VF2`:** for how many patterns each method found exactly VF2's node sets, set by set. Here all of them did. If a method differs, the line also gives how many sets it found that VF2 lacks (false) and how many it missed.
+- **`wall s`:** seconds for all 40 queries. The toy example is too small for these to mean anything, and runs that write matches are slower anyway; time your own graphs in a run without `SETS=1`. `python benchmark/tables.py results/*` turns several runs into a markdown table of wall times.
 
 ## Comparing the methods on your own graph
 
@@ -133,12 +141,14 @@ This runs every method on one machine so the times compare: the five tools, `hop
 
 ## Notes
 
-- **What the tools output:** RI's driver deduplicates mappings into node sets, as our methods do. VF3, VF3L, DAF and FASTiso only count mappings, so their times include no deduplication.
-- **Harness changes, all outside the tools' algorithms:**
-  - DAF crashes when a query's candidate space cannot be built. That means no match exists, so its driver records 0.
-  - **Absent labels:** a query using a label the target lacks has no match, so every driver answers it 0 without calling its tool (`benchmark/drivers/labels.h`). DAF and VF3 need this: DAF reads past its label table for such a label and returned wrong counts, and VF3's classifier would index past the target's classes. RI and FASTiso get the same check so all five tools are treated alike. The check is a few set lookups per query and is inside the query's time; our methods do the equivalent themselves. When most queries have an absent label, as with one of the benchmark targets (353 of 358), the times mainly measure how fast each method rejects them.
-  - Labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods.
-  - VF3 and VF3L run each query's steps from the authors' `main.cpp` once, without its repeat loop.
+- **What the tools output:** all five count mappings, as their own programs do. Our methods count node sets, so their times include deduplicating mappings into node sets and the tools' times do not.
+- **Where a driver differs from the authors' program.** These are the only differences:
+  - **DAF, pattern labels the target lacks:** the only change to what a tool computes. Such a query has no match. The authors' program crashes or reports matches that do not exist when a query label is larger than every label of the data graph, because its label table (`DataGraph::GetTransferredLabel`) is read past its end. So `daf_batch` answers such a query 0 without calling DAF; the comparison is inside the query's time. For a missing label below the largest, DAF's own check already rejects the query (`QueryGraph::LoadAndProcessGraph` returns false), and the driver records 0.
+  - **DAF, crash when no match exists:** when the candidate space cannot be built, destroying DAF's partly built objects crashes (`free(): invalid pointer`). The driver records 0 and leaves them alone.
+  - **Other tools and missing labels:** RI, VF3, VF3L and FASTiso get no such help. Run as the authors ship them, each already answers these queries correctly with 0.
+  - **VF3 and VF3L:** each query's steps from `main.cpp` run once, as with `-r 0`; the program's repeat loop, which re-runs a query to average its time, is not used.
+  - **Match output (verification runs only):** the matches come through each tool's own interface, as described above.
+- **Labels:** labels are recoded as 0..L−1 over the target and the patterns together (`methods/common.py`), so every tool sees the same labels as our methods. When most queries use a label the target lacks, as on some real graphs, the times mainly measure how fast each method rejects them.
 - **DAF's leaf counting:** DAF counts degree-1 query nodes combinatorially instead of enumerating them.
 - **Licences:** this repository is MIT. The published tools keep their own licences (`benchmark/tools.lock`): vf3lib is LGPL-3.0, DAF is Apache-2.0, RI has its own terms, and FASTiso's repository has no licence file. They are fetched from their authors, not redistributed.
 
