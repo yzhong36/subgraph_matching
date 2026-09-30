@@ -5,7 +5,8 @@
 // Guard (not in main.cpp): a pattern using a label the target lacks has no match and is answered 0 without the search,
 // whose node classifier would give that label a class beyond the target's and index past its arrays.
 //   build: benchmark/setup_tools.sh (-DVF3 or -DVF3L)
-//   vf3_batch target.vft queries.txt workers out.tsv [limit_s]
+//   vf3_batch target.vft queries.txt workers out.tsv [limit_s [matches_out]]
+//   matches_out (verification runs, not for timing): also write every query's distinct matched node sets (matches.h)
 //   out.tsv: query index, seconds, solutions (mappings), timed out (0/1); stdout: wall seconds.
 #include <atomic>
 #include <chrono>
@@ -21,6 +22,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "VFLib.h"
+#include "matches.h"
 #include "Options.hpp"
 using namespace vflib;
 
@@ -28,11 +30,13 @@ static sigjmp_buf jb;
 static void on_alarm(int) { siglongjmp(jb, 1); }
 
 int main(int argc, char** argv) {
-    if (argc < 5) { std::cerr << "usage: vf3_batch target.vft queries.txt workers out.tsv [limit_s]\n"; return 1; }
+    if (argc < 5) { std::cerr << "usage: vf3_batch target.vft queries.txt workers out.tsv [limit_s [matches_out]]\n"; return 1; }
     int workers = atoi(argv[3]);
     std::string out = argv[4];
     int limit_s = argc > 5 ? atoi(argv[5]) : 300;
+    std::string matches = argc > 6 ? argv[6] : "";
     Options opt; opt.undirected = true; opt.edgeInduced = true; opt.format = "vf";
+    opt.storeSolutions = !matches.empty();
     std::ifstream tin(argv[1]);
     ARGLoader<data_t, Empty>* tl = CreateLoader<data_t, Empty>(opt, tin);
     ARGraph<data_t, Empty> targ(tl);
@@ -52,6 +56,7 @@ int main(int argc, char** argv) {
     for (int w = 0; w < workers; w++) {
         if (fork() == 0) {
             FILE* fo = fopen((out + "." + std::to_string(w)).c_str(), "w");
+            FILE* fm = matches.empty() ? nullptr : fopen(matches_part(matches, w).c_str(), "w");
             signal(SIGALRM, on_alarm);
             MatchingEngine<state_t>* me = CreateMatchingEngine(opt);
             for (;;) {
@@ -75,6 +80,12 @@ int main(int argc, char** argv) {
                         state_t st(&patt, &targ, class_patt.data(), class_targ.data(), classes_count, sorted.data(), opt.edgeInduced);
                         me->FindAllMatchings(st);
                         sols = me->GetSolutionsCount();
+                        if (fm) {
+                            std::vector<MatchingSolution> found; me->GetSolutions(found);
+                            NodeSets ns;
+                            for (auto& sol : found) { std::vector<int> t; for (auto& pr : sol) t.push_back((int)pr.second); ns.add(t.begin(), t.end()); }
+                            ns.write(fm, j);
+                        }
                     }
                     alarm(0);
                 } else {
@@ -85,6 +96,7 @@ int main(int argc, char** argv) {
                 fflush(fo);
             }
             fclose(fo);
+            if (fm) fclose(fm);
             _exit(0);
         }
     }
@@ -96,6 +108,7 @@ int main(int argc, char** argv) {
         while (std::getline(f, s)) fo << s << "\n";
         std::remove((out + "." + std::to_string(w)).c_str());
     }
+    if (!matches.empty()) merge_matches(matches, workers);
     std::cout << wall << "\n";
     return 0;
 }

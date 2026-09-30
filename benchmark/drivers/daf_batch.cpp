@@ -7,6 +7,7 @@
 // query using a label the data graph lacks is answered 0 without DAF, whose label lookup (DataGraph::GetTransferredLabel)
 // reads past its table for a label above the data graph's largest.
 //   daf_batch data.daf queries.txt workers out.tsv [limit_s]
+//   (no match output: DAF counts the matches of degree-1 query nodes combinatorially instead of enumerating them)
 //   out.tsv: query index, seconds, matches, timed out (0/1); stdout: wall seconds.
 #include <atomic>
 #include <chrono>

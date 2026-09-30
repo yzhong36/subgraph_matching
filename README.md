@@ -46,7 +46,7 @@ Their code is not stored here. `benchmark/setup_tools.sh` fetches each tool at t
 - prints the wall time for all queries;
 - writes one TSV row per query: query index, seconds, mappings, then (`ri_batch` only) distinct node sets, then timed out (0/1).
 
-The drivers count but don't write out the matches.
+Optionally a driver also writes the matches, for verification: give it a sixth argument (after the time limit) naming an output file. It then writes one line per distinct matched node set of each query: the query index, then the set's target node indices, sorted. Every driver except `daf_batch` does this. DAF counts the matches of degree-1 pattern nodes combinatorially instead of enumerating them, so it can only be checked by its counts. Without the argument the drivers run exactly as before, so timings are unaffected.
 
 Only matchers with public code and no cap on query size are included. GraphQL, CFL, DP-iso, CECI, VEQ, RapidMatch, ASDMatch, GuP and EGSM all have a fixed maximum query size.
 
@@ -77,7 +77,7 @@ python methods/seeded_exact.py work/target.gml work/patterns.txt --workers 4 --o
 python methods/vf2.py          work/target.gml work/patterns.txt --workers 4 --output work/vf2.jsonl
 ```
 
-**A published matcher:** convert the same inputs to the tools' formats, then call its driver with target, query list, workers, output TSV and per-query limit in seconds:
+**A published matcher:** convert the same inputs to the tools' formats, then call its driver with target, query list, workers, output TSV and per-query limit in seconds (an optional sixth argument names a file for the matched node sets):
 
 ```bash
 python benchmark/convert.py work/target.gml work/patterns.txt work/input   # target.{gfu,vft,daf}, q/NNNN.*, queries_*.txt
@@ -121,6 +121,7 @@ Results are keyed by pattern file name, so the names must be unique.
 This runs every method on one machine so the times compare: the five tools, `hop_filter.py`, `seeded_exact.py`, and `vf2.py` if `VF2=1`.
 - **Queries:** every query, with a per-query time limit (`LIMIT`, default 300 s).
 - **Other settings:** `BIN` sets where the drivers are, and `PYTHON` which interpreter runs our methods.
+- **Checking that all methods find the same matches:** run it with `SETS=1`. Our methods then write their node sets, and RI, VF3, VF3L and FASTiso write theirs, and `summarize.py` compares them node set by node set with VF2 (or with `hop_filter.py` where VF2 hit its limit). DAF is checked by its counts. These runs write large files and are slower, so use a separate run for timings.
 
 **What is timed:**
 - **The tools:** they prepare the target before their clock starts, so they are timed from the first query.
@@ -128,7 +129,7 @@ This runs every method on one machine so the times compare: the five tools, `hop
 - **`vf2.py`:** its wall time. Queries stopped by `LIMIT` count at the limit, so that time is a lower bound (marked `*`).
 - **In every case:** reading the files and starting the workers are not counted.
 
-`python tests/test_methods.py` repeats the checks on the toy example: every method against VF2 node set by node set, and, if `build/bin` exists, every tool's counts. It also runs under `pytest`.
+`python tests/test_methods.py` repeats the checks on the toy example: our methods against VF2 node set by node set and, if `build/bin` exists, every tool's counts, and node sets for the tools that write them. It also runs under `pytest`.
 
 ## Notes
 

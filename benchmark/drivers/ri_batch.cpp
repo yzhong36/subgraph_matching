@@ -3,7 +3,8 @@
 // from a shared counter (the accounting of seeded exact's multiprocessing pool, chunksize 1).
 // Per query: the RI matching order is built and the search run inside the clock; every match's reference node
 // set is sorted and kept in a hash set, so the count is of distinct node sets, like the ground truth.
-//   ri_batch target.gfu queries.txt workers out.tsv [limit_s]
+//   ri_batch target.gfu queries.txt workers out.tsv [limit_s [matches_out]]
+//   matches_out (verification runs, not for timing): also write every query's distinct matched node sets (matches.h)
 //   out.tsv: query index, seconds, mappings, distinct node sets, timed out (0/1); stdout: wall seconds.
 #include <iostream>
 #include <fstream>
@@ -31,6 +32,7 @@
 #include "Match.h"
 #include "Solver.h"
 #include "SubGISolver.h"
+#include "matches.h"
 
 using namespace rilib;
 
@@ -57,9 +59,10 @@ static sigjmp_buf jb;
 static void on_alarm(int) { siglongjmp(jb, 1); }
 
 int main(int argc, char* argv[]) {
-    if (argc < 5) { std::cerr << "usage: ri_batch target.gfu queries.txt workers out.tsv [limit_s]\n"; return 1; }
+    if (argc < 5) { std::cerr << "usage: ri_batch target.gfu queries.txt workers out.tsv [limit_s [matches_out]]\n"; return 1; }
     int workers = atoi(argv[3]);
     int limit = argc > 5 ? atoi(argv[5]) : 300;
+    std::string matches = argc > 6 ? argv[6] : "";
     Graph* target = new Graph();
     if (read_graph(argv[1], target, GFT_GFU) != 0) { std::cerr << "cannot read target\n"; return 1; }
     std::vector<std::string> qpaths;
@@ -74,6 +77,7 @@ int main(int argc, char* argv[]) {
     for (int w = 0; w < workers; w++) {
         if (fork() == 0) {
             FILE* fo = fopen((out + "." + std::to_string(w)).c_str(), "w");
+            FILE* fm = matches.empty() ? nullptr : fopen(matches_part(matches, w).c_str(), "w");
             signal(SIGALRM, on_alarm);
             StringAttrComparator nodeCmp; DefaultAttrComparator edgeCmp;
             for (;;) {
@@ -90,6 +94,7 @@ int main(int argc, char* argv[]) {
                     match(*target, *queries[j], *mama, *L, MT_MONO, nodeCmp, edgeCmp, &st, &tc, &mc);
                     alarm(0);
                     mappings = L->matchcount; sets = L->sets.size();
+                    if (fm) for (const auto& s : L->sets) write_node_set(fm, j, s);
                     delete mama; delete L;
                 } else {
                     timed_out = 1; mappings = L->matchcount; sets = L->sets.size();     // L and the solver leak
@@ -99,6 +104,7 @@ int main(int argc, char* argv[]) {
                 fflush(fo);
             }
             fclose(fo);
+            if (fm) fclose(fm);
             _exit(0);
         }
     }
@@ -110,6 +116,7 @@ int main(int argc, char* argv[]) {
         while (std::getline(f, s)) fo << s << "\n";
         std::remove((out + "." + std::to_string(w)).c_str());
     }
+    if (!matches.empty()) merge_matches(matches, workers);
     std::cout << wall << "\n";
     return 0;
 }

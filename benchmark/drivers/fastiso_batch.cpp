@@ -3,7 +3,9 @@
 // query parsed once, before the clock; W forked workers take one query at a time from a shared counter.  Per query,
 // inside the clock, what fast_iso.cpp's main does after parsing: initial domains (Filter<CheckMonomorphism>), node
 // ordering (NodeSorter, TRI_ORDER 0) and SearchMatching counting all solutions.
-//   fastiso_batch target.gfu queries.txt workers out.tsv [limit_s]
+//   fastiso_batch target.gfu queries.txt workers out.tsv [limit_s [matches_out]]
+//   matches_out (verification runs, not for timing): also write every query's distinct matched node sets (matches.h);
+//   FASTiso then runs with '-S print-solution' and keeps its solutions in memory instead of counting
 //   out.tsv: query index, seconds, solutions (mappings), timed out (0/1); stdout: wall seconds.
 #include <iostream>
 #include <string>
@@ -54,11 +56,13 @@ using namespace fastiso::internal;
 #include <fstream>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include "matches.h"
 
 static sigjmp_buf jb;
 static void on_alarm(int) { siglongjmp(jb, 1); }
 
-static size_t run_query(Graph& pattern, Graph& target, const CompareEmptyEdgeAttr& cmp) {
+static size_t run_query(Graph& pattern, Graph& target, const CompareEmptyEdgeAttr& cmp,
+                        std::vector<std::vector<State::Monomorphism::node_id_nt>>* keep = nullptr) {
     sbitset* data = new sbitset[pattern.size()];
     vector<node_id_t> data_size(pattern.size());
     Filter<Checker::CheckMonomorphism> filter;
@@ -70,6 +74,7 @@ static size_t run_query(Graph& pattern, Graph& target, const CompareEmptyEdgeAtt
     nodeSort.sortNodes(pattern, node_parent, data_size, dm_result, false);
     std::vector<node_id_t>& node_order = data_size;
     SearchMatching<State::Monomorphism::SubState, State::Monomorphism::NodeInfo, 4> sm(ParseArgs::getAll_solution(), ParseArgs::getSOLUTION(), cmp);
+    sm.solutions = keep;
     sm.searchMatching(data, node_order, node_parent, pattern, target, dm_result);
     size_t count = sm.num_result;
     delete[] data;
@@ -77,14 +82,15 @@ static size_t run_query(Graph& pattern, Graph& target, const CompareEmptyEdgeAtt
 }
 
 int main(int argc, char** argv) {
-    if (argc < 5) { std::cerr << "usage: fastiso_batch target.gfu queries.txt workers out.tsv [limit_s]\n"; return 1; }
+    if (argc < 5) { std::cerr << "usage: fastiso_batch target.gfu queries.txt workers out.tsv [limit_s [matches_out]]\n"; return 1; }
     int workers = atoi(argv[3]);
     std::string out = argv[4];
     int limit_s = argc > 5 ? atoi(argv[5]) : 300;
+    std::string matches = argc > 6 ? argv[6] : "";
     std::vector<std::string> qpaths;
     { std::ifstream f(argv[2]); std::string s; while (std::getline(f, s)) if (!s.empty()) qpaths.push_back(s); }
     // the command line's options, so every static setting the solver reads is what the CLI would use
-    std::string a0 = "FASTiso", a1 = "-A", a2 = "monomorphism", a3 = "-F", a4 = "gfu", a5 = "-G", a6 = "-S", a7 = "count-solution";
+    std::string a0 = "FASTiso", a1 = "-A", a2 = "monomorphism", a3 = "-F", a4 = "gfu", a5 = "-G", a6 = "-S", a7 = matches.empty() ? "count-solution" : "print-solution";
     std::string a8 = qpaths[0], a9 = argv[1];
     char* fake[] = {a0.data(), a1.data(), a2.data(), a3.data(), a4.data(), a5.data(), a6.data(), a7.data(), a8.data(), a9.data(), nullptr};
     ParseArgs::fast_args_parse(10, fake);
@@ -100,6 +106,7 @@ int main(int argc, char** argv) {
     for (int w = 0; w < workers; w++) {
         if (fork() == 0) {
             FILE* fo = fopen((out + "." + std::to_string(w)).c_str(), "w");
+            FILE* fm = matches.empty() ? nullptr : fopen(matches_part(matches, w).c_str(), "w");
             if (!freopen("/dev/null", "w", stdout)) return 1;
             signal(SIGALRM, on_alarm);
             for (;;) {
@@ -107,13 +114,17 @@ int main(int argc, char** argv) {
                 if (j >= nq) break;
                 size_t count = 0; int timed_out = 0;
                 auto s0 = std::chrono::steady_clock::now();
-                if (sigsetjmp(jb, 1) == 0) { alarm(limit_s); count = run_query(*pats[j], target, *cmp); alarm(0); }
-                else timed_out = 1;
+                std::vector<std::vector<State::Monomorphism::node_id_nt>> found;
+                if (sigsetjmp(jb, 1) == 0) {
+                    alarm(limit_s); count = run_query(*pats[j], target, *cmp, fm ? &found : nullptr); alarm(0);
+                    if (fm) { NodeSets ns; for (auto& m : found) ns.add(m.begin(), m.end()); ns.write(fm, j); }
+                } else timed_out = 1;
                 double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - s0).count();
                 fprintf(fo, "%d\t%.6f\t%zu\t%d\n", j, sec, count, timed_out);
                 fflush(fo);
             }
             fclose(fo);
+            if (fm) fclose(fm);
             _exit(0);
         }
     }
@@ -125,6 +136,7 @@ int main(int argc, char** argv) {
         while (std::getline(f, s)) fo << s << "\n";
         std::remove((out + "." + std::to_string(w)).c_str());
     }
+    if (!matches.empty()) merge_matches(matches, workers);
     std::cout << wall << "\n";
     return 0;
 }

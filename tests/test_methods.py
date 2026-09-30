@@ -67,6 +67,7 @@ def relabelled(kind: str) -> Path:
             g.write_gml(str(d / 'patterns' / f'{name}.gml'))
         for m in ('seeded_exact.py', 'hop_filter.py', 'vf2.py'):
             subprocess.run([PY, ROOT / 'methods' / m, d / 'target.gml', d / 'patterns', '--workers', '2',
+                            *([] if m == 'vf2.py' else ['--sets']),               # vf2.py always writes the sets
                             '--output', d / f'{m[:-3]}.jsonl'], check=True, stdout=subprocess.DEVNULL)
     return d
 
@@ -84,7 +85,8 @@ def test_labels_of_any_kind():
 
 
 def test_published_tools():
-    """On the example, and on its string-labelled variant with single-node patterns (patterns as a folder)."""
+    """On the example, and on its string-labelled variant with single-node patterns (patterns as a folder): every tool's
+    mapping count equals hop_filter's, and the node sets RI, VF3, VF3L and FASTiso write equal VF2's."""
     if not (BIN / 'ri_batch').exists():
         print(f'  published tools not built in {BIN}: skipped')
         return
@@ -93,18 +95,26 @@ def test_published_tools():
         subprocess.run([PY, ROOT / 'benchmark' / 'convert.py', d / 'target.gml', plist, d / 'input'], check=True,
                        stdout=subprocess.DEVNULL)
         names = (d / 'input' / 'patterns.txt').read_text().split()
+        ids = [int(x) for x in (d / 'input' / 'ids.txt').read_text().split()]
         hop = {r['pattern']: r for r in map(json.loads, (d / hop_out).open())}
-        for exe, fmt in (('ri_batch', 'gfu'), ('vf3_batch_VF3', 'vft'), ('vf3_batch_VF3L', 'vft'), ('daf_batch', 'daf'),
-                         ('fastiso_batch', 'gfu')):
-            out = d / f'{exe}.tsv'
-            subprocess.run([BIN / exe, d / 'input' / f'target.{fmt}', d / 'input' / f'queries_{fmt}.txt', '2', out, '60'],
-                           check=True, stdout=subprocess.DEVNULL)
+        vf2 = sets(d / 'vf2.jsonl')
+        for exe, fmt, dumps in (('ri_batch', 'gfu', True), ('vf3_batch_VF3', 'vft', True), ('vf3_batch_VF3L', 'vft', True),
+                                ('daf_batch', 'daf', False), ('fastiso_batch', 'gfu', True)):
+            out, matches = d / f'{exe}.tsv', d / f'{exe}.matches'
+            cmd = [BIN / exe, d / 'input' / f'target.{fmt}', d / 'input' / f'queries_{fmt}.txt', '2', out, '60']
+            subprocess.run(cmd + ([matches] if dumps else []), check=True, stdout=subprocess.DEVNULL)
             rows = {int(r[0]): r[1:] for r in (l.split('\t') for l in out.read_text().splitlines() if l.strip())}
             assert len(rows) == len(names), exe
             for j, p in enumerate(names):
                 assert int(rows[j][1]) == hop[p]['mappings'], (d.name, exe, p)
                 if exe == 'ri_batch':
                     assert int(rows[j][2]) == hop[p]['occurrences'], (d.name, exe, p)
+            if dumps:
+                found = {p: set() for p in names}
+                for line in matches.read_text().splitlines():
+                    f = line.split()
+                    found[names[int(f[0])]].add(tuple(sorted(ids[int(x)] for x in f[1:])))
+                assert found == vf2, (d.name, exe, 'node sets differ from VF2')
 
 if __name__ == '__main__':
     failed = 0

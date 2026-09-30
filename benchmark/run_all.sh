@@ -8,6 +8,8 @@
 # patterns: a folder of pattern .gml files, a list file (one pattern GML path per line, relative to the list's folder),
 # or one .gml file.  Pattern file names must be unique (results are keyed by them).
 # Env: BIN (default <repo>/build/bin), PYTHON (default python3), LIMIT, VF2.
+# SETS=1: verification run, for benchmark/summarize.py's check that every method finds the same node sets.  Our
+# methods write their node sets and the tools (except DAF, which only counts) dump theirs, so times are not comparable.
 # Results in out_dir: input/ (converted files), w<W>_<method>.{tsv,wall} for the tools, w<W>_<method>.{jsonl,json} for
 # ours, w<W>_host.txt.  benchmark/summarize.py reads them.
 set -euo pipefail
@@ -19,18 +21,25 @@ LIMIT=${LIMIT:-300}
 G=$1; P=$2; R=$3; W=$4
 mkdir -p "$R"
 I=$R/input
-[ -f "$I/queries_daf.txt" ] || "$PY" "$HERE/convert.py" "$G" "$P" "$I"
+[ -f "$I/ids.txt" ] || "$PY" "$HERE/convert.py" "$G" "$P" "$I"
 echo "$(hostname), $(lscpu | grep 'Model name' | sed 's/.*: *//'), $W workers, $(date -Is)" | tee "$R/w${W}_host.txt"
 step() { echo "$(date +%T) w$W $1  load $(cut -d' ' -f1-3 /proc/loadavg)"; }
 
-step RI;      "$BIN/ri_batch"       "$I/target.gfu" "$I/queries_gfu.txt" "$W" "$R/w${W}_ri.tsv" "$LIMIT"      > "$R/w${W}_ri.wall"
-step VF3;     "$BIN/vf3_batch_VF3"  "$I/target.vft" "$I/queries_vft.txt" "$W" "$R/w${W}_vf3.tsv" "$LIMIT"     > "$R/w${W}_vf3.wall"
-step VF3L;    "$BIN/vf3_batch_VF3L" "$I/target.vft" "$I/queries_vft.txt" "$W" "$R/w${W}_vf3l.tsv" "$LIMIT"    > "$R/w${W}_vf3l.wall"
-step DAF;     "$BIN/daf_batch"      "$I/target.daf" "$I/queries_daf.txt" "$W" "$R/w${W}_daf.tsv" "$LIMIT"     > "$R/w${W}_daf.wall"
-step FASTiso; "$BIN/fastiso_batch"  "$I/target.gfu" "$I/queries_gfu.txt" "$W" "$R/w${W}_fastiso.tsv" "$LIMIT" > "$R/w${W}_fastiso.wall"
+tool() {   # tool <label> <key> <driver> <format> <dumps matches 1|0>
+    step "$1"
+    local extra=()
+    [ "${SETS:-0}" = 1 ] && [ "$5" = 1 ] && extra=("$R/w${W}_$2.matches")
+    "$BIN/$3" "$I/target.$4" "$I/queries_$4.txt" "$W" "$R/w${W}_$2.tsv" "$LIMIT" ${extra[@]+"${extra[@]}"} > "$R/w${W}_$2.wall"
+}
+tool RI      ri      ri_batch       gfu 1
+tool VF3     vf3     vf3_batch_VF3  vft 1
+tool VF3L    vf3l    vf3_batch_VF3L vft 1
+tool DAF     daf     daf_batch      daf 0
+tool FASTiso fastiso fastiso_batch  gfu 1
 
-step hop;     "$PY" "$M/hop_filter.py" "$G" "$P" --workers "$W" --output "$R/w${W}_hop.jsonl" > "$R/w${W}_hop.json"
-step seeded;  "$PY" "$M/seeded_exact.py" "$G" "$P" --workers "$W" --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
+SETARG=(); [ "${SETS:-0}" = 1 ] && SETARG=(--sets)
+step hop;     "$PY" "$M/hop_filter.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_hop.jsonl" > "$R/w${W}_hop.json"
+step seeded;  "$PY" "$M/seeded_exact.py" "$G" "$P" --workers "$W" ${SETARG[@]+"${SETARG[@]}"} --output "$R/w${W}_seeded.jsonl" > "$R/w${W}_seeded.json"
 if [ "${VF2:-0}" = 1 ]; then
     step VF2; "$PY" "$M/vf2.py" "$G" "$P" --workers "$W" --limit "$LIMIT" --output "$R/w${W}_vf2.jsonl" > "$R/w${W}_vf2.json"
 fi

@@ -6,6 +6,7 @@
                             per vertex its edge count and each undirected edge once, from its lower end
   target.daf, q/NNNN.daf    DAF's format: "t n m", "v id label" per vertex, "e a b" per edge
   queries_{gfu,vft,daf}.txt the query files in pattern order;  patterns.txt  the pattern file names in that order
+  ids.txt                   the target's GML node id at each node index (the tools report node indices)
 
 Inputs are read as the methods read them (methods/common.py load): patterns given as GML files, folders or lists, and
 labels (integers of any size, or strings) recoded as 0..L-1 over the target and the patterns together, so every tool
@@ -50,6 +51,7 @@ def main() -> None:
     for ext in ('gfu', 'vft', 'daf'):
         (out / f'queries_{ext}.txt').write_text(''.join(f"{out / 'q' / f'{j:04d}.{ext}'}\n" for j in range(len(paths))))
     (out / 'patterns.txt').write_text(''.join(p.name + '\n' for p in paths))
+    (out / 'ids.txt').write_text(''.join(f'{int(v)}\n' for v in G.vs['id']))
     print(f'{target.name}: {G.vcount():,} nodes, {G.ecount():,} edges, {len(paths)} patterns, '
           f'{len(set(G.vs["label"]))} labels -> {out}', flush=True)
 
