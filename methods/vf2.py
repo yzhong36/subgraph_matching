@@ -16,8 +16,6 @@ import signal
 import time
 from pathlib import Path
 
-import igraph as ig
-
 import common
 
 _T: dict = {}

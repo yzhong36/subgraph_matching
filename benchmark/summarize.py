@@ -23,7 +23,6 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-import numpy as np
 
 TOOLS = [('ri', 'RI'), ('vf3', 'VF3'), ('vf3l', 'VF3L'), ('daf', 'DAF'), ('fastiso', 'FASTiso')]
 
@@ -66,7 +65,7 @@ def node_set_check(R: Path, W: int, names: list[str], rows: dict) -> list[str]:
             if not vf2[p]['capped']:
                 ref[p] = sets_of(vf2, p)
     ids = [int(x) for x in (R / 'input' / 'ids.txt').read_text().split()] if (R / 'input' / 'ids.txt').exists() else None
-    n, out = len(names), []
+    out: list[str] = []
 
     def compare(label: str, got: dict, only: list[str] | None = None) -> None:
         only = names if only is None else only
