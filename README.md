@@ -1,4 +1,4 @@
-# subgraph_matching
+# Benchmarking exact labelled subgraph matching
 
 Exact labelled subgraph matching on large graphs, and a harness that runs published exact matchers on the same inputs so all methods can be checked against each other and timed.
 
@@ -159,4 +159,17 @@ methods/            hop_filter.py, seeded_exact.py, vf2.py, common.py
 benchmark/          setup_tools.sh, tools.lock, drivers/*.cpp, convert.py, run_all.sh, summarize.py, tables.py
 examples/           make_example.py
 tests/              test_methods.py
+```
+
+## Citation
+
+If you use this repository, please cite it as:
+
+```bibtex
+@software{zhong_subgraph_matching,
+  author = {Zhong, Yu},
+  title  = {Benchmarking Exact Labelled Subgraph Matching},
+  year   = {2026},
+  url    = {https://github.com/yzhong36/subgraph_matching}
+}
 ```
